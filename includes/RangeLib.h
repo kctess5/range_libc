@@ -46,6 +46,8 @@ Useful Links: https://github.com/MRPT/mrpt/blob/4137046479222f3a71b5c00aee1d5fa8
 #include <iomanip>      // std::setw
 #include <unistd.h>
 #include <sstream>
+// #define NDEBUG
+#include <cassert>
 
 #define _MAKE_TRACE_MAP 0
 #define _TRACK_LUT_SIZE 0
@@ -54,14 +56,6 @@ Useful Links: https://github.com/MRPT/mrpt/blob/4137046479222f3a71b5c00aee1d5fa8
 #define _EPSILON 0.00001
 #define M_2PI 6.28318530718
 #define _BINARY_SEARCH_THRESHOLD 64 // if there are more than this number of elements in the lut bin, use binary search
-
-#define NUM_SCAN_POINTS 1080
-#define SAMPLE_DENSITY 16
-#define NUM_SAMPLES 68
-#define USE_RANDOM_SAMPLES 0
-
-#define MAX_SCAN_ANGLE (0.75 * M_PI)
-// #define MAX_SCAN_ANGLE (M_PI)
 
 // fast optimized version
 #define _USE_CACHED_TRIG 0
@@ -81,9 +75,6 @@ Useful Links: https://github.com/MRPT/mrpt/blob/4137046479222f3a71b5c00aee1d5fa8
 // #define _DO_MOD 0 // this might not be necessary (aka 1 & 0 might be equivalent), will evaluate later
 // #define _NO_INLINE 0
 
-// #define NDEBUG
-#include <cassert>
-
 // No inline
 #if _NO_INLINE == 1
 #define ANIL __attribute__ ((noinline))
@@ -94,7 +85,7 @@ Useful Links: https://github.com/MRPT/mrpt/blob/4137046479222f3a71b5c00aee1d5fa8
 namespace ranges {
 	struct OMap
 	{
-		bool has_error = false;
+		bool has_error;
 		unsigned width;  // x axis
 		unsigned height; // y axis
 		std::vector<std::vector<bool> > grid;
@@ -104,7 +95,7 @@ namespace ranges {
 		std::vector<std::vector<bool> > trace_grid;
 		#endif
 
-		OMap(int w, int h) : width(w), height(h), fn("") {
+		OMap(int w, int h) : width(w), height(h), fn(""), has_error(false) {
 			for (int i = 0; i < w; ++i) {
 				std::vector<bool> y_axis;
 				for (int q = 0; q < h; ++q) y_axis.push_back(false);
@@ -120,7 +111,7 @@ namespace ranges {
 		}
 
 		OMap(std::string filename) : OMap(filename, 128) {}
-		OMap(std::string filename, float threshold) : fn(filename) {
+		OMap(std::string filename, float threshold) : fn(filename), has_error(false) {
 			unsigned error;
 			unsigned char* image;
 
@@ -365,6 +356,24 @@ namespace ranges {
 		#if _MAKE_TRACE_MAP == 1
 		void saveTrace(std::string fn) { map.saveTrace(fn); }
 		#endif
+
+		void numpy_calc_range(float * ins, float * outs, int num_casts) {
+			// for (int i = 0; i < num_casts * 3; ++i)
+			// {
+			// 	std::cout << ins[i] << std::endl;
+			// }
+			for (int i = 0; i < num_casts; ++i) {
+				// std::cout << ins[i * 3];
+				// std::cout << "  " << ins[i * 3 + 1];
+				// std::cout << "  " << ins[i * 3 + 2] << std::endl;
+				// std::cout << ins[i];
+				// std::cout << "  " << ins[i + num_casts];
+				// std::cout << "  " << ins[i+num_casts*2] << std::endl;
+				// std::cout << "TSET" << std::endl;
+				outs[i] = calc_range(ins[i], ins[i+num_casts], ins[i+num_casts*2]);
+				// outs[i] = calc_range(ins[i], ins[i*3+1], ins[i*3+2]);
+			}
+		}
 	
 	protected:
 		OMap map;
