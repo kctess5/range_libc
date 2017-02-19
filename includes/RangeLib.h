@@ -998,7 +998,7 @@ namespace ranges {
 
 			// compute the edge map of the geometry - no ray can intersect with non-edge geometry,
 			// so pruning it now will speed up LUT construction, especially for dense maps
-			OMap edge_map = map.make_edge_map(false);
+			OMap edge_map = map.make_edge_map(true);
 			// edge_map.save("./edge_map.png");
 
 			// fill the LUT datastructure by projecting each occupied pixel into LUT space and storing
@@ -1026,6 +1026,13 @@ namespace ranges {
 
 							int upper_bin = lut_space_center_y + half_lut_space_width - _EPSILON;
 							int lower_bin = lut_space_center_y - half_lut_space_width + _EPSILON;
+
+							// the following is a quick hack to prevent problems in the cardinal directions
+							// where it has been known to see through walls
+							// if (std::fmod(angle, M_PI/2.0) < _EPSILON) {
+							// 	upper_bin++;
+							// 	lower_bin--;
+							// }
 
 							for (int i = lower_bin; i <= upper_bin; ++i) 
 								compressed_lut[a][i].push_back(lut_space_center_x);
