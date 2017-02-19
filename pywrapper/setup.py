@@ -4,20 +4,47 @@ from Cython.Distutils import build_ext
 import numpy, os, platform, sys
 from os.path import join as pjoin
 
+
+# Obtain the numpy include directory.  This logic works across numpy versions.
+try:
+    numpy_include = numpy.get_include()
+except AttributeError:
+    numpy_include = numpy.get_numpy_include()
+
 if "WITH_CUDA" in os.environ:
-	use_cuda = (os.environ["WITH_CUDA"].lower() == "on")
+    use_cuda = (os.environ["WITH_CUDA"].lower() == "on")
 else:
-	use_cuda = False
+    use_cuda = False
 
 if use_cuda:
-	print "Compiling with CUDA support"
+    print "Compiling with CUDA support"
 else:
-	print "Compiling without CUDA support. To enable CUDA use:"
-	print "   $ sudo WITH_CUDA=ON python setup.py install"
+    print "Compiling without CUDA support. To enable CUDA use:"
+    print "   $ sudo WITH_CUDA=ON python setup.py install"
 
+# support for compiling in clang
 if platform.system().lower() == "darwin":
-	os.environ["MACOSX_DEPLOYMENT_TARGET"] = platform.mac_ver()[0]
-	os.environ["CC"] = "c++"
+    os.environ["MACOSX_DEPLOYMENT_TARGET"] = platform.mac_ver()[0]
+    os.environ["CC"] = "c++"
+
+# compiler_flags = ["-w","-std=c++11", "-march=native", "-ffast-math", "-fno-math-errno"]
+compiler_flags = ["-w","-std=c++11", "-march=native", "-ffast-math", "-fno-math-errno", "-O3"]
+nvcc_flags = ['-arch=sm_20', '--ptxas-options=-v', '-c', '--compiler-options', "'-fPIC'", "-w","-std=c++11"]
+include_dirs = ["../", numpy_include]
+depends = ["../includes/*.h"]
+sources = ["RangeLibc.pyx","../vendor/lodepng/lodepng.cpp"]
+
+CHUNK_SIZE = "262144"
+NUM_THREADS = "256"
+
+if use_cuda:
+    compiler_flags.append("-DUSE_CUDA=1");        nvcc_flags.append("-DUSE_CUDA=1")
+    compiler_flags.append("-DCHUNK_SIZE="+CHUNK_SIZE); nvcc_flags.append("-DCHUNK_SIZE="+CHUNK_SIZE)
+    compiler_flags.append("-DNUM_THREADS="+NUM_THREADS);   nvcc_flags.append("-DNUM_THREADS="+NUM_THREADS)
+
+    CUDA = locate_cuda()
+    include_dirs.append(CUDA['include'])
+    sources.append("../includes/kernels.cu")
 
 def find_in_path(name, path):
     "Find a file in a search path"
@@ -107,30 +134,8 @@ class custom_build_ext(build_ext):
         customize_compiler_for_nvcc(self.compiler)
         build_ext.build_extensions(self)
 
-# Obtain the numpy include directory.  This logic works across numpy versions.
-try:
-    numpy_include = numpy.get_include()
-except AttributeError:
-    numpy_include = numpy.get_numpy_include()
-
-# compiler_flags = ["-w","-std=c++11", "-march=native", "-ffast-math", "-fno-math-errno"]
-compiler_flags = ["-w","-std=c++11", "-march=native", "-ffast-math", "-fno-math-errno", "-O3"]
-nvcc_flags = ['-arch=sm_20', '--ptxas-options=-v', '-c', '--compiler-options', "'-fPIC'", "-w","-std=c++11"]
-include_dirs = ["../", numpy_include]
-depends = ["../includes/*.h"]
-sources = ["RangeLib.pyx","../vendor/lodepng/lodepng.cpp"]
-
 if use_cuda:
-	compiler_flags.append("-DUSE_CUDA=1");        nvcc_flags.append("-DUSE_CUDA=1")
-	compiler_flags.append("-DCHUNK_SIZE=262144"); nvcc_flags.append("-DCHUNK_SIZE=262144")
-	compiler_flags.append("-DNUM_THREADS=256");   nvcc_flags.append("-DNUM_THREADS=256")
-
-	CUDA = locate_cuda()
-	include_dirs.append(CUDA['include'])
-	sources.append("../includes/kernels.cu")
-
-if use_cuda:
-	ext = Extension("range_lib", sources, 
+	ext = Extension("range_libc", sources, 
 					extra_compile_args = {'gcc': compiler_flags, 'nvcc': nvcc_flags},
 					extra_link_args = ["-std=c++11"],
 					include_dirs = include_dirs,
@@ -139,7 +144,7 @@ if use_cuda:
 					runtime_library_dirs=[CUDA['lib64']],
 					depends=depends,
 					language="c++",)
-	setup(name='range_lib',
+	setup(name='range_libc',
 		author='Corey Walsh',
 		version='0.1',
 		ext_modules = [ext],
@@ -147,13 +152,13 @@ if use_cuda:
 		cmdclass={'build_ext': custom_build_ext})
 else:
 	setup(ext_modules=[
-			Extension("range_lib", sources, 
+			Extension("range_libc", sources, 
 				extra_compile_args = compiler_flags,
 				extra_link_args = ["-std=c++11"],
 				include_dirs = include_dirs,
 				depends=["../includes/*.h"],
 				language="c++",)],
-		name='range_lib',
+		name='range_libc',
 		author='Corey Walsh',
 		version='0.1',
 	    cmdclass = {'build_ext': build_ext})

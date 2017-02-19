@@ -1,22 +1,35 @@
-import range_lib
+import range_libc
 import numpy as np
 import itertools, time
 # import matplotlib.mlab as mlab
 # import matplotlib.pyplot as plt
 
-# print range_lib.USE_CACHED_TRIG
-# print range_lib.USE_CACHED_TRIG
-# print range_lib.USE_ALTERNATE_MOD
-# print range_lib.USE_CACHED_CONSTANTS
-# print range_lib.USE_FAST_ROUND
-# print range_lib.NO_INLINE
-# print range_lib.USE_LRU_CACHE
-# print range_lib.LRU_CACHE_SIZE
+####################################################################################################
+#
+#                                              WARNING
+#  
+#
+#                    This file uses range_libc in it's native coordinate space.
+#                      Use this method at your own peril since the coordinate
+#                      conversions are nontrivial from ROS's coordinate space.
+#                       Ignore this warning if you intend to use range_libc's 
+#                                   left handed coordinate space
+#
+#
+####################################################################################################
 
+# print range_libc.USE_CACHED_TRIG
+# print range_libc.USE_CACHED_TRIG
+# print range_libc.USE_ALTERNATE_MOD
+# print range_libc.USE_CACHED_CONSTANTS
+# print range_libc.USE_FAST_ROUND
+# print range_libc.NO_INLINE
+# print range_libc.USE_LRU_CACHE
+# print range_libc.LRU_CACHE_SIZE
 
-# testMap = range_lib.PyOMap("../maps/basement_hallways_5cm.png",1)
-# testMap = range_lib.PyOMap("../maps/synthetic.map.png",1)
-testMap = range_lib.PyOMap("/home/racecar/racecar-ws/src/TA_examples/lab5/maps/basement.png",1)
+# testMap = range_libc.PyOMap("../maps/basement_hallways_5cm.png",1)
+# testMap = range_libc.PyOMap("../maps/synthetic.map.png",1)
+testMap = range_libc.PyOMap("/home/racecar/racecar-ws/src/TA_examples/lab5/maps/basement.png",1)
 
 if testMap.error():
 	exit()
@@ -30,25 +43,20 @@ num_vals = 100000
 # vals[2,:] = np.linspace(0,2.0*np.pi, num=num_vals)
 
 print "Init: bl"
-bl = range_lib.PyBresenhamsLine(testMap, 500)
+bl = range_libc.PyBresenhamsLine(testMap, 500)
 
 bl.calc_range(100,100,np.pi/4.0)
 bl.save_trace("./trace.png")
 
 # print "Init: rm"
-# rm = range_lib.PyRayMarching(testMap, 500)
+# rm = range_libc.PyRayMarching(testMap, 500)
 # print "Init: cddt"
-# cddt = range_lib.PyCDDTCast(testMap, 500, 108)
+# cddt = range_libc.PyCDDTCast(testMap, 500, 108)
 # cddt.prune()
 # print "Init: glt"
-# glt = range_lib.PyGiantLUTCast(testMap, 500, 108)
+# glt = range_libc.PyGiantLUTCast(testMap, 500, 108)
 # this is for testing the amount of raw functional call overhead, does not compute ranges
-# null = range_lib.PyNull(testMap, 500, 108)
-
-
-
-
-exit()
+# null = range_libc.PyNull(testMap, 500, 108)
 
 for x in xrange(10):
 	vals = np.random.random((3,num_vals)).astype(np.float32)
