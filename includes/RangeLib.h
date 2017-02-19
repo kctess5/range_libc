@@ -758,11 +758,11 @@ namespace ranges {
 		// call overhead by passing it a numpy array pointer. Indexing assumes a 3xn numpy array
 		// for the inputs and a 1xn numpy array of the outputs
 		void numpy_calc_range(float * ins, float * outs, int num_casts) {
+			#if USE_CUDA == 1
 			#if ROS_WORLD_TO_GRID_CONVERSION == 0
 			std::cout << "Cannot use GPU numpy_calc_range without ROS_WORLD_TO_GRID_CONVERSION == 1" << std::endl;
 			return;
 			#endif
-			#if USE_CUDA == 1
 			maybe_warn(num_casts);
 			int iters = std::ceil((float)num_casts / (float)CHUNK_SIZE);
 			for (int i = 0; i < iters; ++i) {
@@ -776,11 +776,11 @@ namespace ranges {
 		}
 
 		void numpy_calc_range_angles(float * ins, float * angles, float * outs, int num_particles, int num_angles) {
+			#if USE_CUDA == 1
 			#if ROS_WORLD_TO_GRID_CONVERSION == 0
 			std::cout << "Cannot use GPU numpy_calc_range without ROS_WORLD_TO_GRID_CONVERSION == 1" << std::endl;
 			return;
 			#endif
-			#if USE_CUDA == 1
 			
 			int particles_per_iter = std::ceil((float)CHUNK_SIZE / (float)num_angles);
 			int iters = std::ceil((float)num_particles / (float) particles_per_iter);
@@ -797,6 +797,7 @@ namespace ranges {
 		}
 
 		#if SENSOR_MODEL_HELPERS == 1
+		#if USE_CUDA == 1
 		void set_sensor_model(double *table, int table_width) {
 			// convert the sensor model from a numpy array to a vector array
 			for (int i = 0; i < table_width; ++i)
@@ -806,17 +807,17 @@ namespace ranges {
 					table_row.push_back(table[table_width*i + j]);
 				sensor_model.push_back(table_row);
 			}
-
 			rmc->set_sensor_table(table, table_width);
 		}
+		#endif
 
 		// calc range for each pose, adding every angle, evaluating the sensor model
 		void calc_range_repeat_angles_eval_sensor_model(float * ins, float * angles, float * obs, double * weights, int num_particles, int num_angles) {
+			#if USE_CUDA == 1
 			#if ROS_WORLD_TO_GRID_CONVERSION == 0
 			std::cout << "Cannot use GPU numpy_calc_range without ROS_WORLD_TO_GRID_CONVERSION == 1" << std::endl;
 			return;
 			#endif
-			#if USE_CUDA == 1
 			
 			int particles_per_iter = std::ceil((float)CHUNK_SIZE / (float)num_angles);
 			int iters = std::ceil((float)num_particles / (float) particles_per_iter);

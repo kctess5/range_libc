@@ -46,7 +46,7 @@ cdef extern from "includes/RangeLib.h" namespace "ranges":
         BresenhamsLine(OMap m, float mr)
         float calc_range(float x, float y, float heading)
         void numpy_calc_range(float * ins, float * outs, int num_casts)
-        bool saveTrace(string filename)
+        # bool saveTrace(string filename)
         void eval_sensor_model(float * obs, float * ranges, double * outs, int rays_per_particle, int particles)
         void set_sensor_model(double * table, int width)
         void numpy_calc_range_angles(float * ins, float * angles, float * outs, int num_casts, int num_angles)
@@ -202,8 +202,8 @@ cdef class PyBresenhamsLine:
     cpdef void calc_range_repeat_angles_eval_sensor_model(self,np.ndarray[float, ndim=2, mode="c"] ins,np.ndarray[float, ndim=1, mode="c"] angles, np.ndarray[float, ndim=1, mode="c"] obs, np.ndarray[double, ndim=1, mode="c"] weights):
         self.thisptr.calc_range_repeat_angles_eval_sensor_model(&ins[0,0], &angles[0], &obs[0],  &weights[0], ins.shape[0], angles.shape[0])
 
-    cpdef float save_trace(self, string path):
-        self.thisptr.saveTrace(path)
+    # cpdef float save_trace(self, string path):
+    #     self.thisptr.saveTrace(path)
     cpdef void eval_sensor_model(self, np.ndarray[float, ndim=1, mode="c"] observation, np.ndarray[float, ndim=1, mode="c"] ranges, np.ndarray[double, ndim=1, mode="c"] outs, int num_rays, int num_particles):
         self.thisptr.eval_sensor_model(&observation[0],&ranges[0], &outs[0], num_rays, num_particles)
     cpdef void set_sensor_model(self, np.ndarray[double, ndim=2, mode="c"] table):
