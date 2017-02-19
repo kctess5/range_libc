@@ -1,0 +1,4 @@
+build/
+tmp/
+pywrapper/*.so
+pywrapper/*.cpp
