@@ -29,9 +29,10 @@ Useful Links: https://github.com/MRPT/mrpt/blob/4137046479222f3a71b5c00aee1d5fa8
 #define RANGE_LIB_H
 
 #include "vendor/lodepng/lodepng.h"
-#include "vendor/dt/dt.h"
+// #include "vendor/dt/dt.h"
 #include "includes/lru_cache.h"
 #include "includes/RangeUtils.h"
+#include "vendor/distance_transform/include/distance_transform/distance_transform.hpp"
 
 #include <stdio.h>      /* printf */
 #include <cstdlib>
@@ -280,8 +281,22 @@ namespace ranges {
 
 		// computes the distance transform of a given OMap
 		DistanceTransform(OMap *map) {
+			std::cout << "DIST TRANS" << std::endl;
 			width = map->width;
 			height = map->height;
+
+			dope::Index2 grid_size({width, height});
+			dope::Grid<float, 2> f(grid_size);
+			dope::Grid<dope::SizeType, 2> indices(grid_size);
+
+			for (dope::SizeType i = 0; i < width; ++i)
+		        for (dope::SizeType j = 0; j < height; ++j)
+		        	if (map->isOccupied(i,j)) f[i][j] = 0.0;
+		        	else f[i][j] = std::numeric_limits<float>::max();
+
+			dt::DistanceTransform::initializeIndices(indices);
+			dt::DistanceTransform::distanceTransformL2(f, f, indices, false, 1);
+
 
 			// allocate space in the vectors
 			for (int i = 0; i < width; ++i) {
@@ -290,33 +305,17 @@ namespace ranges {
 				grid.push_back(y_axis);
 			}
 
-			image<uchar> *out = new image<uchar>(width, height, true);
-
-			for (int y = 0; y < height; ++y) {
-				for (int x = 0; x < width; ++x) {
-					if (map->isOccupied(x,y)) imRef(out, x, y) = 1;
-				}
-			}
-
-			// compute squared distance transform
-  			image<float> *dst = dt(out);
-
-  			// take square roots and store to array
+			// store to array
 			for (int y = 0; y < height; y++) {
 				for (int x = 0; x < width; x++) {
-					// imRef(dst, x, y) = sqrt(imRef(dst, x, y));
-					grid[x][y] = sqrt(imRef(dst, x, y));
-
-					// std::cout << sqrt(imRef(dst, x, y)) << std::endl;
+					grid[x][y] = f[x][y];
 				}
 			}
 
-			// convert to grayscale
-			image<uchar> *gray = imageFLOATtoUCHAR(dst);
-  			// savePGM(gray, "test.pgm");
-
-			delete out;
-			delete dst;
+			// delete f;
+			// delete grid_size;
+			// delete indices;
+			std::cout << "DONE DIST TRANS" << std::endl;
 		}
 
 		bool save(std::string filename) {
@@ -357,21 +356,13 @@ namespace ranges {
 		void saveTrace(std::string fn) { map.saveTrace(fn); }
 		#endif
 
+		// wrapper function to call calc_range repeatedly with the given array of inputs
+		// and store the result to the given outputs. Useful for avoiding cython function
+		// call overhead by passing it a numpy array pointer. Indexing assumes a 3xn numpy array
+		// for the inputs and a 1xn numpy array of the outputs
 		void numpy_calc_range(float * ins, float * outs, int num_casts) {
-			// for (int i = 0; i < num_casts * 3; ++i)
-			// {
-			// 	std::cout << ins[i] << std::endl;
-			// }
 			for (int i = 0; i < num_casts; ++i) {
-				// std::cout << ins[i * 3];
-				// std::cout << "  " << ins[i * 3 + 1];
-				// std::cout << "  " << ins[i * 3 + 2] << std::endl;
-				// std::cout << ins[i];
-				// std::cout << "  " << ins[i + num_casts];
-				// std::cout << "  " << ins[i+num_casts*2] << std::endl;
-				// std::cout << "TSET" << std::endl;
 				outs[i] = calc_range(ins[i], ins[i+num_casts], ins[i+num_casts*2]);
-				// outs[i] = calc_range(ins[i], ins[i*3+1], ins[i*3+2]);
 			}
 		}
 	
