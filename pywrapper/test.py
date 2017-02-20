@@ -1,8 +1,8 @@
 import range_lib
 import numpy as np
 import itertools, time
-import matplotlib.mlab as mlab
-import matplotlib.pyplot as plt
+# import matplotlib.mlab as mlab
+# import matplotlib.pyplot as plt
 
 # print range_lib.USE_CACHED_TRIG
 # print range_lib.USE_CACHED_TRIG
