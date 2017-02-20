@@ -30,7 +30,7 @@ Useful Links: https://github.com/MRPT/mrpt/blob/4137046479222f3a71b5c00aee1d5fa8
 
 #include "vendor/lodepng/lodepng.h"
 // #include "vendor/dt/dt.h"
-#include "includes/lru_cache.h"
+
 #include "includes/RangeUtils.h"
 #include "vendor/distance_transform/include/distance_transform/distance_transform.hpp"
 
@@ -75,6 +75,10 @@ Useful Links: https://github.com/MRPT/mrpt/blob/4137046479222f3a71b5c00aee1d5fa8
 // #define _USE_FAST_ROUND 1
 // #define _DO_MOD 0 // this might not be necessary (aka 1 & 0 might be equivalent), will evaluate later
 // #define _NO_INLINE 0
+// 
+#if _USE_LRU_CACHE
+#include "includes/lru_cache.h"
+#endif
 
 // No inline
 #if _NO_INLINE == 1
