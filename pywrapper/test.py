@@ -12,7 +12,10 @@ import itertools, time
 # print range_lib.LRU_CACHE_SIZE
 
 
-testMap = range_lib.PyOMap("../maps/synthetic.map.png",1)
+testMap = range_lib.PyOMap("../maps/basement_hallways_5cm.png",1)
+
+if testMap.error():
+	exit()
 # testMap.save("./test.png")
 
 num_vals = 100000
@@ -59,7 +62,7 @@ for x in xrange(100):
 		ranges_slow = map(lambda x: obj.calc_range(*x), test_states)
 		end = time.clock()
 		dur = end - start
-		
+
 		diff = np.linalg.norm(ranges - np.array(ranges_slow))
 		if diff > 0.001:
 			print ",,,"+"Numpy result different from slow result, investigation possibly required. norm:", diff
