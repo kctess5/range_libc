@@ -1,6 +1,8 @@
 import range_lib
 import numpy as np
 import itertools, time
+# import matplotlib.mlab as mlab
+# import matplotlib.pyplot as plt
 
 # print range_lib.USE_CACHED_TRIG
 # print range_lib.USE_CACHED_TRIG
@@ -12,7 +14,8 @@ import itertools, time
 # print range_lib.LRU_CACHE_SIZE
 
 
-testMap = range_lib.PyOMap("../maps/basement_hallways_5cm.png",1)
+# testMap = range_lib.PyOMap("../maps/basement_hallways_5cm.png",1)
+testMap = range_lib.PyOMap("../maps/synthetic.map.png",1)
 
 if testMap.error():
 	exit()
@@ -25,20 +28,19 @@ num_vals = 100000
 # vals[1,:] = testMap.height()/2.0
 # vals[2,:] = np.linspace(0,2.0*np.pi, num=num_vals)
 
-
-
 print "Init: bl"
 bl = range_lib.PyBresenhamsLine(testMap, 500)
 print "Init: rm"
 rm = range_lib.PyRayMarching(testMap, 500)
 print "Init: cddt"
 cddt = range_lib.PyCDDTCast(testMap, 500, 108)
+cddt.prune()
 print "Init: glt"
 glt = range_lib.PyGiantLUTCast(testMap, 500, 108)
 # this is for testing the amount of raw functional call overhead, does not compute ranges
 # null = range_lib.PyNull(testMap, 500, 108)
 
-for x in xrange(100):
+for x in xrange(10):
 	vals = np.random.random((3,num_vals)).astype(np.float32)
 	vals[0,:] *= (testMap.width() - 2.0)
 	vals[1,:] *= (testMap.height() - 2.0)
@@ -75,6 +77,28 @@ for x in xrange(100):
 	bench(rm, "rm")
 	bench(cddt, "cddt")
 	bench(glt, "glt")
+
+	# ranges_bl = np.zeros(num_vals, dtype=np.float32)
+	# ranges_rm = np.zeros(num_vals, dtype=np.float32)
+	# ranges_cddt = np.zeros(num_vals, dtype=np.float32)
+	# ranges_glt = np.zeros(num_vals, dtype=np.float32)
+
+	# bl.calc_range_np(vals, ranges_bl)
+	# rm.calc_range_np(vals, ranges_rm)
+	# cddt.calc_range_np(vals, ranges_cddt)
+	# glt.calc_range_np(vals, ranges_glt)
+
+	# diff = ranges_rm - ranges_cddt
+	# norm = np.linalg.norm(diff)
+	# avg = np.mean(diff)
+	# min_v = np.min(diff)
+	# max_v = np.max(diff)
+	# median = np.median(diff)
+	# print avg, min_v, max_v, median
+
+	# plt.hist(diff, bins=1000, normed=1, facecolor='green', alpha=0.75)
+	# plt.show()
+
 	# this is for testing the amount of raw functional call overhead, does not compute ranges
 	# bench(null, "null")
 print "DONE"
