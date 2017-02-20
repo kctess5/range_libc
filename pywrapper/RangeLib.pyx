@@ -37,6 +37,7 @@ cdef extern from "includes/RangeLib.h" namespace "ranges":
     cdef cppclass CDDTCast:
         CDDTCast(OMap m, float mr, unsigned int td)
         float calc_range(float x, float y, float heading)
+        void prune(float max_range)
         void numpy_calc_range(float * ins, float * outs, int num_casts)
     cdef cppclass GiantLUTCast:
         GiantLUTCast(OMap m, float mr, unsigned int td)
@@ -134,10 +135,17 @@ cdef class PyRayMarching:
 
 cdef class PyCDDTCast:
     cdef CDDTCast *thisptr      # hold a C++ instance which we're wrapping
+    cdef float max_range
     def __cinit__(self, PyOMap Map, float max_range, unsigned int theta_disc):
+        self.max_range = max_range
         self.thisptr = new CDDTCast(deref(Map.thisptr), max_range, theta_disc)
     def __dealloc__(self):
         del self.thisptr
+    cpdef void prune(self, float max_range=-1.0):
+        if max_range < 0.0:
+            self.thisptr.prune(self.max_range)
+        else:
+            self.thisptr.prune(max_range)
     cpdef float calc_range(self, float x, float y, float heading):
         return self.thisptr.calc_range(x, y, heading)
     cpdef void calc_range_np(self,np.ndarray[float, ndim=2, mode="c"] ins, np.ndarray[float, ndim=1, mode="c"] outs):

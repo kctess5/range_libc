@@ -281,7 +281,6 @@ namespace ranges {
 
 		// computes the distance transform of a given OMap
 		DistanceTransform(OMap *map) {
-			std::cout << "DIST TRANS" << std::endl;
 			width = map->width;
 			height = map->height;
 
@@ -311,11 +310,6 @@ namespace ranges {
 					grid[x][y] = f[x][y];
 				}
 			}
-
-			// delete f;
-			// delete grid_size;
-			// delete indices;
-			std::cout << "DONE DIST TRANS" << std::endl;
 		}
 
 		bool save(std::string filename) {
