@@ -198,12 +198,10 @@ namespace ranges {
 					}
 
 					if (grid[x][y] && trace_grid[x][y]) {
-
 						image[idx + 0] = 0;
 						image[idx + 1] = 0;
 						image[idx + 2] = 0;
 					}
-
 					image[idx + 3] = 255;
 				}
 			}
@@ -211,6 +209,7 @@ namespace ranges {
 			if(!error) lodepng::save_file(png, filename);
 			//if there's an error, display it
 			if(error) std::cout << "encoder error " << error << ": "<< lodepng_error_text(error) << std::endl;
+			return error;
 		}
 		#endif
 
@@ -240,6 +239,7 @@ namespace ranges {
 			if(!error) lodepng::save_file(png, filename);
 			//if there's an error, display it
 			if(error) std::cout << "encoder error " << error << ": "<< lodepng_error_text(error) << std::endl;
+			return error;
 		}
 
 		OMap make_edge_map(bool count_corners) {
@@ -336,6 +336,7 @@ namespace ranges {
 			if(!error) lodepng::save_file(png, filename);
 			//if there's an error, display it
 			if(error) std::cout << "encoder error " << error << ": "<< lodepng_error_text(error) << std::endl;
+			return error;
 		}
 	};
 
@@ -397,7 +398,7 @@ namespace ranges {
 			float y1 = x + max_range*cosf(heading);
 
 			bool steep = false;
-			if (abs(y1-y0) > abs(x1-x0)) steep = true;
+			if (std::abs(y1-y0) > std::abs(x1-x0)) steep = true;
 
 			if (steep) {
 				float tmp = x0;
@@ -408,8 +409,8 @@ namespace ranges {
 				y1 = tmp;
 			}
 
-			float deltax = abs(x1-x0);
-			float deltay = abs(y1-y0);
+			float deltax = std::abs(x1-x0);
+			float deltay = std::abs(y1-y0);
 
 			float error = 0;
 			float deltaerr = deltay;
@@ -543,9 +544,9 @@ namespace ranges {
 				// compute the height of the axis aligned bounding box, which will determine
 				// the necessary width of the lookup table for this angle
 				#if _USE_CACHED_TRIG == 1
-				float rotated_height = abs(map.width * sinfangle) + abs(map.height * cosfangle);
+				float rotated_height = std::abs(map.width * sinfangle) + std::abs(map.height * cosfangle);
 				#else
-				float rotated_height = abs(map.width * sinf(angle)) + abs(map.height * cosf(angle));
+				float rotated_height = std::abs(map.width * sinf(angle)) + std::abs(map.height * cosf(angle));
 				#endif
 				unsigned int lut_width = ceil(rotated_height - _EPSILON);
 				lut_widths.push_back(lut_width);
@@ -633,7 +634,7 @@ namespace ranges {
 							float sinangle = sinf(angle);
 							#endif
 
-							float half_lut_space_width = (abs(sinangle) + abs(cosangle)) / 2.0;
+							float half_lut_space_width = (std::abs(sinangle) + std::abs(cosangle)) / 2.0;
 
 							float lut_space_center_x = pixel_center.first * cosangle - pixel_center.second * sinangle;
 							float lut_space_center_y = (pixel_center.first * sinangle + pixel_center.second * cosangle) + lut_translations[a];
@@ -884,9 +885,6 @@ namespace ranges {
 			bool is_flipped;
 			std::tie(angle_index, discrete_theta, is_flipped) = discretize_theta(-1.0*heading);
 
-			
-			
-
 			#if _USE_CACHED_TRIG == 1
 			float cosangle = cos_values[angle_index];
 			float sinangle = sin_values[angle_index];
@@ -1033,6 +1031,9 @@ namespace ranges {
 					}
 				}
 			}
+			// this should never occur, if it does, there's an error
+			assert(0);
+			return -1.0;
 		}
 
 		// returns both range for the given heading, and heading + pi/2

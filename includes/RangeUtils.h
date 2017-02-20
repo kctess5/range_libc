@@ -7,6 +7,7 @@
 #include <string>
 #include <algorithm>
 #include <climits>
+#include <random>
 
 namespace utils {
 	static unsigned long x=123456789, y=362436069, z=521288629;
@@ -193,7 +194,7 @@ namespace utils {
 			return cache[i];
 		}
 
-		float populate() {
+		void populate() {
 			// cache.empty();
 			// for (int i = 0; i < cache_size; ++i) cache.push_back(std::rand() / (float)RAND_MAX);
 			for (int i = 0; i < cache_size; ++i) cache[i] = std::rand() / (float)RAND_MAX;
