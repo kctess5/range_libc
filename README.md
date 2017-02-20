@@ -9,13 +9,13 @@ The following has been tested on both Ubuntu 14.04 and OSX 10.10, hopefully it w
 ### C++ code
 
 ```
-	# clone the repository
-	git clone https://github.mit.edu/chwalsh/range_libc_dist
-	cd range_libc_dist
-	mkdir build
-	cd build
-	cmake ..
-	make
+# clone the repository
+git clone https://github.mit.edu/chwalsh/range_libc_dist
+cd range_libc_dist
+mkdir build
+cd build
+cmake ..
+make
 ```
 
 If you get an error about having the wrong version of CMake, install a version of CMake that is >= version 3.3 from here: https://cmake.org/install/
@@ -23,13 +23,13 @@ If you get an error about having the wrong version of CMake, install a version o
 If you don't want to update your system's version of CMake, simply:
 
 ```
-	# unzip cmake download and cd into that directory
-	mkdir build
-	cd build
-	cmake ..
-	make
-	# 3.9 should be your cmake version number
-	sudo ln -s [path to cmake directory]/build/bin/cmake /usr/bin/cmake3.9
+# unzip cmake download and cd into that directory
+mkdir build
+cd build
+cmake ..
+make
+# 3.9 should be your cmake version number
+sudo ln -s [path to cmake directory]/build/bin/cmake /usr/bin/cmake3.9
 ```
 
 Then use cmake3.9 instead of cmake in the above instructions for building the range_lib code.
@@ -39,15 +39,15 @@ Then use cmake3.9 instead of cmake in the above instructions for building the ra
 To build the code and its associated Python wrappers for use in Python code, do the following. You may have to install Cython if you do not already have it on your system.
 
 ```
-	# clone the repository
-	git clone https://github.mit.edu/chwalsh/range_libc_dist
-	cd range_libc_dist/pywrapper
-	# for an in place build, do this:
-	python setup.py build_ext --inplace
-	# for a system wide install, do this:
-	python setup.py install
-	# this should take a few seconds to run
-	python test.py
+# clone the repository
+git clone https://github.mit.edu/chwalsh/range_libc_dist
+cd range_libc_dist/pywrapper
+# for an in place build, do this:
+python setup.py build_ext --inplace
+# for a system wide install, do this:
+python setup.py install
+# this should take a few seconds to run
+python test.py
 ```
 
 Take a look at test.py in the pywrapper directory for example usage. It is recommended that you use the calc_range_np method with batched queries, as it is significantly faster due to lower function call overhead per query. Basically, you simply populate a Numpy array with the (x,y,theta) queries and the function will populate a provided numpy array with the results. Under the hood, the code operates directly on the Numpy data structure, eliminating the need to copy data back and forth through function calls.
