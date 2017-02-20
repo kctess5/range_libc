@@ -2,9 +2,91 @@
 
 This library provides for different implementations of 2D raycasting for 2D occupancy grids. The code is written and optimized in C++, and Python wrappers are also provided.
 
+## Building the Code
+
+The following has been tested on both Ubuntu 14.04 and OSX 10.10, hopefully it will work on other systems as well, or will at least be not too difficult to fix.
+
+### C++ code
+
+```
+	# clone the repository
+	git clone https://github.mit.edu/chwalsh/range_libc_dist
+	cd range_libc_dist
+	mkdir build
+	cd build
+	cmake ..
+	make
+```
+
+If you get an error about having the wrong version of CMake, install a version of CMake that is >= version 3.3 from here: https://cmake.org/install/
+
+If you don't want to update your system's version of CMake, simply:
+
+```
+	# unzip cmake download and cd into that directory
+	mkdir build
+	cd build
+	cmake ..
+	make
+	# 3.9 should be your cmake version number
+	sudo ln -s [path to cmake directory]/build/bin/cmake /usr/bin/cmake3.9
+```
+
+Then use cmake3.9 instead of cmake in the above instructions for building the range_lib code.
+
+### Python Wrappers
+
+To build the code and its associated Python wrappers for use in Python code, do the following. You may have to install Cython if you do not already have it on your system.
+
+```
+	# clone the repository
+	git clone https://github.mit.edu/chwalsh/range_libc_dist
+	cd range_libc_dist/pywrapper
+	# for an in place build, do this:
+	python setup.py build_ext --inplace
+	# for a system wide install, do this:
+	python setup.py install
+	# this should take a few seconds to run
+	python test.py
+```
+
+Take a look at test.py in the pywrapper directory for example usage. It is recommended that you use the calc_range_np method with batched queries, as it is significantly faster due to lower function call overhead per query. Basically, you simply populate a Numpy array with the (x,y,theta) queries and the function will populate a provided numpy array with the results. Under the hood, the code operates directly on the Numpy data structure, eliminating the need to copy data back and forth through function calls.
+
+## License
+
+This code is licensed under Apache 2.0. Copyright 2017 Corey H. Walsh. 
+
+You may obtain a copy of the License at: http://www.apache.org/licenses/LICENSE-2.0
+
+Enjoy!
+
 ## Code structure
 
-
+```
+range_libc_dist/
+├── build
+│   └── bin          # this is where compiled binaries will be placed
+├── CMakeLists.txt   # compilation rules - includes, etc
+├── includes
+│   ├── lru_cache.h  # implementation of LRU_cache, optionally used
+│   ├── RangeLib.h   # main RangeLib source code
+│   └── RangeUtils.h # various utility functions
+├── license.txt
+├── main.cpp         # example c++ usage and simple benchmarks
+├── make_plots.py    # turns fine-grained benchmark information into violin plots
+├── tmp/             # make this directory for saving fine-grained timing information
+├── maps             # example PNG maps
+│   └── [various .png files]
+├── pywrapper
+│   ├── RangeLib.pyx # wrapper file for using RangeLib from Python
+│   ├── setup.py     # compilation rules for Cython
+│   └── test.py      # example Python usage
+├── README.md
+└── vendor           # various dependencies, see in here for licenses
+    ├── distance_transform # for computing euclidean distance transform
+    ├── gflags       # command line flag library from Google
+    └── lodepng      # simple PNG loading/saving library
+```
 
 ## RangeLibc Algorithms Overview
 
