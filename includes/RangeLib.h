@@ -49,6 +49,7 @@ Useful Links: https://github.com/MRPT/mrpt/blob/4137046479222f3a71b5c00aee1d5fa8
 #include <sstream>
 // #define NDEBUG
 #include <cassert>
+#include <tuple>
 
 #define _MAKE_TRACE_MAP 0
 #define _TRACK_LUT_SIZE 0

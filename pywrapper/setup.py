@@ -11,7 +11,7 @@ setup(
 	ext_modules=[
 		Extension("range_lib", ["RangeLib.pyx","../vendor/lodepng/lodepng.cpp"], 
 			extra_compile_args = ["-w","-std=c++11", "-march=native", "-ffast-math", "-fno-math-errno", "-O3"],
-			extra_link_args = ["-std=c++11","-stdlib=libc++"],
+			extra_link_args = ["-std=c++11"],
 			include_dirs = [
 				"../",
 				"../vendor/distance_transform/",

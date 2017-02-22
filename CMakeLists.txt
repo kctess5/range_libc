@@ -45,4 +45,4 @@ set(CMAKE_CXX_FLAGS "-march=native -ffast-math -fno-math-errno ${CMAKE_CXX_FLAGS
 set(CMAKE_BUILD_TYPE Release)
 
 add_executable(range_lib ${SRCS})
-target_link_libraries(range_lib gflags distance_transform)
+target_link_libraries(range_lib gflags distance_transform pthread)
