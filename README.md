@@ -52,6 +52,22 @@ python test.py
 
 Take a look at test.py in the pywrapper directory for example usage. It is recommended that you use the calc_range_np method with batched queries, as it is significantly faster due to lower function call overhead per query. Basically, you simply populate a Numpy array with the (x,y,theta) queries and the function will populate a provided numpy array with the results. Under the hood, the code operates directly on the Numpy data structure, eliminating the need to copy data back and forth through function calls.
 
+### Building on a RACECAR
+
+MIT's 6.141 uses this library for accelerating particle filters onboard the RACECAR platform. To install this on the Jetson TX1, do:
+
+```
+# Copy the code
+cd range_libc_dist 
+mkdir build
+cmake ..
+make
+# To build the Python wrappers
+sudo apt-get install Cython
+cd pywrapper
+python setup.py install
+```
+
 ## License
 
 This code is licensed under Apache 2.0. Copyright 2017 Corey H. Walsh. 

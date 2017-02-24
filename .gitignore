@@ -3,3 +3,4 @@ tmp/
 pywrapper/*.so
 pywrapper/*.cpp
 pywrapper/test.png
+.DS_Store

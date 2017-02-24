@@ -206,6 +206,39 @@ namespace utils {
 		// std::vector<float> cache;
 		float cache[10000];
 	};
+
+	void serialize(std::vector<bool> &vals,std::stringstream* ss) {
+		if (vals.size() == 0) {
+			(*ss) << "[]";
+			return; 
+		}
+		(*ss) << "[" << vals[0];
+		for (int i = 1; i < vals.size(); ++i) {
+			(*ss) << "," << vals[i];
+		}
+		(*ss) << "]";
+	}
+
+	void serialize(std::vector<float> &vals,std::stringstream* ss) {
+		if (vals.size() == 0) {
+			(*ss) << "[]";
+			return; 
+		}
+		(*ss) << "[" << vals[0];
+		for (int i = 1; i < vals.size(); ++i) {
+			(*ss) << "," << vals[i];
+		}
+		(*ss) << "]";
+	}
+
+	std::string serialize(std::vector<float> &vals) {
+		std::stringstream ss;
+		serialize(vals,&ss);
+		return ss.str();
+	}
+
+
+
 } // namespace utils
 
 #endif	/* _RANGE_UTILS_H_INCLUDED_ */

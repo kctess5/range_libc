@@ -88,6 +88,18 @@ Useful Links: https://github.com/MRPT/mrpt/blob/4137046479222f3a71b5c00aee1d5fa8
 #define ANIL 
 #endif
 
+// these defines are for yaml serialization
+
+#define T1 "  "
+#define T2 T1 T1
+#define T3 T1 T1 T1
+#define T4 T2 T2
+
+#define J1 "  "
+#define J2 J1 J1
+#define J3 J1 J1 J1
+#define J4 J2 J2
+
 namespace ranges {
 	struct OMap
 	{
@@ -1176,6 +1188,90 @@ namespace ranges {
 					return std::make_pair(val - lut_space_x, lut_space_x - (*lut_bin)[inverse_index]);
 				}
 			}
+		}
+
+		void serializeYaml(std::stringstream* ss) {
+			// (*ss) << std::fixed;
+    		(*ss) << std::setprecision(7);
+
+			(*ss) << "cddt:" << std::endl;
+			(*ss) << T1 << "theta_discretization: " << theta_discretization << std::endl;
+			(*ss) << T1 << "lut_translations: ";
+			utils::serialize(lut_translations, ss);
+			(*ss) << std::endl;
+			(*ss) << T1 << "max_range: " << max_range << std::endl;
+			(*ss) << T1 << "map: " << std::endl;
+			(*ss) << T2 << "# note: map data is width and then height (width is number of rows) transposed from expectation:"  << std::endl;
+			(*ss) << T2 << "path: " << map.fn << std::endl;
+			(*ss) << T2 << "width: " << map.width << std::endl;
+			(*ss) << T2 << "height: " << map.height << std::endl;
+			(*ss) << T2 << "data: " << std::endl;
+			for (int i = 0; i < map.width; ++i) {
+				(*ss) << T3 << "- "; utils::serialize(map.grid[i], ss);(*ss) << std::endl;
+			}
+			(*ss) << T1 << "compressed_lut: " << std::endl;
+			for (int i = 0; i < compressed_lut.size(); ++i) {
+				#if _USE_CACHED_CONSTANTS
+				float angle = i * M_2PI_div_theta_discretization;
+				#else
+				float angle = M_2PI * i / theta_discretization;
+				#endif
+
+				(*ss) << T2 << "- slice: " << std::endl;
+				(*ss) << T3 << "theta: " << angle << std::endl;
+				(*ss) << T3 << "zeros: " << std::endl;
+
+				for (int j = 0; j < compressed_lut[i].size(); ++j) {
+					(*ss) << T4 << "- "; utils::serialize(compressed_lut[i][j], ss); (*ss) << std::endl;
+				}		
+			}
+		}
+
+		void serializeJson(std::stringstream* ss) {
+			// (*ss) << std::fixed;
+    		(*ss) << std::setprecision(7);
+
+			(*ss) << "{\"cddt\": {" << std::endl;
+				(*ss)  << J1 << "\"theta_discretization\": " << theta_discretization  << ","<< std::endl;
+				(*ss)  << J1 << "\"lut_translations\": "; utils::serialize(lut_translations, ss); (*ss) << "," << std::endl;
+				(*ss) << J1 << "\"max_range\":" << max_range << "," << std::endl;
+				(*ss) << J1 << "\"map\": {" << std::endl;
+				// (*ss) << J2 << "# note: map data is width and then height (width is number of rows) transposed from expectation:"  << std::endl;
+				(*ss) << J2 << "\"path\": \"" << map.fn << "\"," << std::endl;
+				(*ss) << J2 << "\"width\": " << map.width << "," << std::endl;
+				(*ss) << J2 << "\"height\": " << map.height << "," << std::endl;
+				
+				(*ss) << J2 << "\"data\": [";// utils::serialize(map.grid[0], ss);
+				for (int i = 0; i < map.width; ++i) {
+					if (i > 0) (*ss) << ","; 
+					utils::serialize(map.grid[i], ss);
+				}
+				(*ss) << "]," << std::endl;
+				(*ss) << J1 << "}," << std::endl;
+				(*ss) << J1 << "\"compressed_lut\": [" << std::endl;
+				for (int i = 0; i < compressed_lut.size(); ++i) {
+					#if _USE_CACHED_CONSTANTS
+					float angle = i * M_2PI_div_theta_discretization;
+					#else
+					float angle = M_2PI * i / theta_discretization;
+					#endif
+
+					(*ss) << J2 << "{" << std::endl;
+					(*ss) << J3 << "\"theta\": " << angle << "," << std::endl;
+					(*ss) << J3 << "\"zeros\": [";
+
+					for (int j = 0; j < compressed_lut[i].size(); ++j) {
+						if (j > 0) (*ss) << ","; 
+						utils::serialize(compressed_lut[i][j], ss);
+					}
+					(*ss) << "]" << std::endl;
+					if (i == compressed_lut.size() -1)	
+						(*ss) << J2 << "}" << std::endl;
+					else
+						(*ss) << J2 << "}," << std::endl;
+				}
+				(*ss) << J1 << "]" << std::endl;
+			(*ss) << "}}" << std::endl;
 		}
 
 		void report() {

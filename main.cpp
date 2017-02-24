@@ -29,6 +29,9 @@ DEFINE_string(method, "RayMarching",
 DEFINE_string(map_path, "BASEMENT_MAP",
 	"Path to map image, relative to current directory");
 
+DEFINE_string(cddt_save_path, "",
+	"Path to serialize CDDT data structure to.");
+
 #define MAX_DISTANCE 500
 #define NUM_RAYS 500
 #define THETA_DISC 108
@@ -69,15 +72,16 @@ int main(int argc, char *argv[])
 	OMap map = OMap(1,1);
 	if (FLAGS_map_path == "BASEMENT_MAP") {
 		#ifdef BASEPATH
-		#pragma GCC diagnostic push
-		#pragma GCC diagnostic ignored "-Wunused-result"
-		(volatile void) chdir(BASEPATH);
-		#pragma GCC diagnostic pop
+		std::cout << "...Loading map" << std::endl;
+		map = OMap(BASEPATH "/maps/basement_hallways_5cm.png");
+		// #pragma GCC diagnostic push
+		// #pragma GCC diagnostic ignored "-Wunused-result"
+		// (volatile void) chdir(BASEPATH);
+		// #pragma GCC diagnostic pop
 		#else
 		std::cout << "BASEPATH not defined, map paths may not resolve correctly." << std::endl;
 		#endif
-		std::cout << "...Loading map" << std::endl;
-		map = OMap("./maps/basement_hallways_5cm.png");
+		
 	} else {
 		map = OMap(FLAGS_map_path);
 	}
@@ -157,6 +161,13 @@ int main(int argc, char *argv[])
 			#ifdef VERBOSE_LOG_PATH
 			save_log(log, VERBOSE_LOG_PATH "/pcddt.csv");
 			#endif
+		}
+
+		if (!FLAGS_cddt_save_path.empty()) {\
+			std::cout << "...saving CDDT to:" << FLAGS_cddt_save_path<< std::endl;
+			std::stringstream cddt_serialized;
+			rc.serializeJson(&cddt_serialized);
+			save_log(cddt_serialized, FLAGS_cddt_save_path.c_str());
 		}
 	}
 
