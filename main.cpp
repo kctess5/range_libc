@@ -32,24 +32,29 @@ DEFINE_string(map_path, "BASEMENT_MAP",
 DEFINE_string(cddt_save_path, "",
 	"Path to serialize CDDT data structure to.");
 
+DEFINE_string(log_path, "",
+	"Where to store high fidelity logs, does not save if not specified.");
+
+DEFINE_string(which_benchmark, "random",
+	"Which benchmark to run, one of:\n  random\n  grid\n");
+
 #define MAX_DISTANCE 500
 #define NUM_RAYS 500
 #define THETA_DISC 108
 #define MB (1024.0*1024.0)
-#ifdef BASEPATH
-#define VERBOSE_LOG_PATH BASEPATH "/tmp"
-#endif
+// #ifdef BASEPATH
+// #define FLAGS_log_path BASEPATH "/tmp/basement/"
+// #endif
 
 // grid sample settings
 #define GRID_STEP 10
 #define GRID_RAYS 40
 #define GRID_SAMPLES 1
-
+#define RANDOM_SAMPLES 200000
 
 using namespace ranges;
 using namespace benchmark;
 
-#ifdef VERBOSE_LOG_PATH
 void save_log(std::stringstream &log, const char *fn) {
 	std::cout << "...saving log to: " << fn << std::endl;
 	std::ofstream file;  
@@ -57,7 +62,10 @@ void save_log(std::stringstream &log, const char *fn) {
 	file << log.str();
 	file.close();
 }
-#endif
+
+void save_log(std::stringstream &log, std::string path) {
+	save_log(log,path.c_str());
+}
 
 int main(int argc, char *argv[])
 {
@@ -86,81 +94,124 @@ int main(int argc, char *argv[])
 		map = OMap(FLAGS_map_path);
 	}
 
-	#ifdef VERBOSE_LOG_PATH
-	std::cout << "Saving logs to: " << VERBOSE_LOG_PATH "/" << std::endl;
-	std::stringstream log; 
-	#endif
-	
+	bool DO_LOG = (FLAGS_log_path != "");
+	std::stringstream tlog;
+	std::stringstream summary; 
+	if (DO_LOG) {
+		std::cout << "Saving logs to: " << FLAGS_log_path << std::endl;
+		summary << std::fixed;
+	    summary << std::setprecision(9);
+		summary << "method,construction_time,memory_bytes" << std::endl;
+	}
+
 	if (map.error()) return 1;
 
 	std::vector<std::string> methods = utils::split(FLAGS_method, ',');
 
 	if (utils::has("BresenhamsLine", methods) || utils::has("bl", methods)) {
 		std::cout << "\n...Loading range method: BresenhamsLine" << std::endl;
-		Benchmark<BresenhamsLine> mark = Benchmark<BresenhamsLine>(BresenhamsLine(map, MAX_DISTANCE));
-		std::cout << "...Running grid benchmark" << std::endl;
+		auto construction_start = std::chrono::high_resolution_clock::now();
+		BresenhamsLine bl = BresenhamsLine(map, MAX_DISTANCE);
+		auto construction_end = std::chrono::high_resolution_clock::now();
+		std::chrono::duration<double> construction_dur = 
+			std::chrono::duration_cast<std::chrono::duration<double>>(construction_end - construction_start);
 		
-		#ifdef VERBOSE_LOG_PATH
-		log.str("");
-		mark.set_log(&log);
-		#endif
+		std::cout << "...Running grid benchmark" << std::endl;
+		Benchmark<BresenhamsLine> mark = Benchmark<BresenhamsLine>(bl);
+		
+		if (DO_LOG) {
+			tlog.str("");
+			mark.set_log(&tlog);
+			summary << "bl," << construction_dur.count() << "," << bl.memory() << std::endl;
+		}
 		// run the benchmark
-		mark.grid_sample(GRID_STEP, GRID_RAYS, GRID_SAMPLES);
-		#ifdef VERBOSE_LOG_PATH
-		save_log(log, VERBOSE_LOG_PATH "/bl.csv");
-		#endif
+		if (FLAGS_which_benchmark == "grid")
+			mark.grid_sample(GRID_STEP, GRID_RAYS, GRID_SAMPLES);
+		else if (FLAGS_which_benchmark == "random")
+			mark.random_sample(RANDOM_SAMPLES);
+		
+		if (DO_LOG) {
+			save_log(tlog, FLAGS_log_path+"/bl.csv");
+		}
 	}
 
 	if (utils::has("RayMarching", methods) || utils::has("rm", methods)) {
 		std::cout << "\n...Loading range method: RayMarching" << std::endl;
-		Benchmark<RayMarching> mark = Benchmark<RayMarching>(RayMarching(map, MAX_DISTANCE));
+		auto construction_start = std::chrono::high_resolution_clock::now();
+		RayMarching rm = RayMarching(map, MAX_DISTANCE);
+		auto construction_end = std::chrono::high_resolution_clock::now();
+		std::chrono::duration<double> construction_dur = 
+			std::chrono::duration_cast<std::chrono::duration<double>>(construction_end - construction_start);
+		Benchmark<RayMarching> mark = Benchmark<RayMarching>(rm);
 		std::cout << "...Running grid benchmark" << std::endl;
-		#ifdef VERBOSE_LOG_PATH
-		log.str("");
-		mark.set_log(&log);
-		#endif
-		// run the benchmark
-		mark.grid_sample(GRID_STEP, GRID_RAYS, GRID_SAMPLES);
-		#ifdef VERBOSE_LOG_PATH
-		save_log(log, VERBOSE_LOG_PATH "/rm.csv");
-		#endif
+		if (DO_LOG) {
+			tlog.str("");
+			mark.set_log(&tlog);
+			summary << "rm," << construction_dur.count() << "," << rm.memory() << std::endl;
+		}
+		if (FLAGS_which_benchmark == "grid")
+			mark.grid_sample(GRID_STEP, GRID_RAYS, GRID_SAMPLES);
+		else if (FLAGS_which_benchmark == "random")
+			mark.random_sample(RANDOM_SAMPLES);
+		if (DO_LOG) {
+			save_log(tlog, FLAGS_log_path+"/rm.csv");
+		}
 	}
 
 	if (utils::has("CDDTCast", methods) || utils::has("cddt", methods)
 		|| utils::has("PrunedCDDTCast", methods) || utils::has("pcddt", methods)) {
+		auto construction_start = std::chrono::high_resolution_clock::now();
 		CDDTCast rc = CDDTCast(map, MAX_DISTANCE, THETA_DISC);
+		auto construction_end = std::chrono::high_resolution_clock::now();
+		std::chrono::duration<double> construction_dur = 
+			std::chrono::duration_cast<std::chrono::duration<double>>(construction_end - construction_start);
 
+		double const_dur = 0;
 		if (utils::has("CDDTCast", methods) || utils::has("cddt", methods)) {
 			std::cout << "\n...Loading range method: CDDTCast" << std::endl;
-			std::cout << "...lut size (MB): " << rc.lut_size() / MB << std::endl;
+			std::cout << "...lut size (MB): " << rc.memory() / MB << std::endl;
 			Benchmark<CDDTCast> mark = Benchmark<CDDTCast>(rc);
 			std::cout << "...Running grid benchmark" << std::endl;
-			#ifdef VERBOSE_LOG_PATH
-			log.str("");
-			mark.set_log(&log);
-			#endif
-			// run the benchmark
-			mark.grid_sample(GRID_STEP, GRID_RAYS, GRID_SAMPLES);
-			#ifdef VERBOSE_LOG_PATH
-			save_log(log, VERBOSE_LOG_PATH "/cddt.csv");
-			#endif
+			if (DO_LOG) {
+				tlog.str("");
+				mark.set_log(&tlog);
+				summary << "cddt," << construction_dur.count() << "," << rc.memory() << std::endl;
+			}
+			if (FLAGS_which_benchmark == "grid")
+				mark.grid_sample(GRID_STEP, GRID_RAYS, GRID_SAMPLES);
+			else if (FLAGS_which_benchmark == "random")
+				mark.random_sample(RANDOM_SAMPLES);
+			if (DO_LOG) {
+				save_log(tlog, FLAGS_log_path+"/cddt.csv");
+			}
 		}
 
 		if (utils::has("PrunedCDDTCast", methods) || utils::has("pcddt", methods)) {
 			std::cout << "\n...Loading range method: PrunedCDDTCast" << std::endl;
+			
+
+			auto prune_start = std::chrono::high_resolution_clock::now();
 			rc.prune(MAX_DISTANCE);
-			std::cout << "...pruned lut size (MB): " << rc.lut_size() / MB << std::endl;
+			auto prune_end = std::chrono::high_resolution_clock::now();
+			std::chrono::duration<double> prune_dur = 
+				std::chrono::duration_cast<std::chrono::duration<double>>(prune_end - prune_start);
+
+
+			std::cout << "...pruned lut size (MB): " << rc.memory() / MB << std::endl;
 			Benchmark<CDDTCast> mark = Benchmark<CDDTCast>(rc);
 			std::cout << "...Running grid benchmark" << std::endl;
-			#ifdef VERBOSE_LOG_PATH
-			log.str("");
-			mark.set_log(&log);
-			#endif
-			// run the benchmark
-			mark.grid_sample(GRID_STEP, GRID_RAYS, GRID_SAMPLES);
-			#ifdef VERBOSE_LOG_PATH
-			save_log(log, VERBOSE_LOG_PATH "/pcddt.csv");
-			#endif
+			if (DO_LOG) {
+				tlog.str("");
+				mark.set_log(&tlog);
+				summary << "pcddt," << construction_dur.count() + prune_dur.count() << "," << rc.memory() << std::endl;
+			}
+			if (FLAGS_which_benchmark == "grid")
+				mark.grid_sample(GRID_STEP, GRID_RAYS, GRID_SAMPLES);
+			else if (FLAGS_which_benchmark == "random")
+				mark.random_sample(RANDOM_SAMPLES);
+			if (DO_LOG) {
+				save_log(tlog, FLAGS_log_path+"/pcddt.csv");
+			}
 		}
 
 		if (!FLAGS_cddt_save_path.empty()) {\
@@ -173,19 +224,34 @@ int main(int argc, char *argv[])
 
 	if (utils::has("GiantLUTCast", methods) || utils::has("glt", methods)) {
 		std::cout << "\n...Loading range method: GiantLUTCast" << std::endl;
+		
+
+		auto construction_start = std::chrono::high_resolution_clock::now();
 		GiantLUTCast glt = GiantLUTCast(map, MAX_DISTANCE, THETA_DISC);
+		auto construction_end = std::chrono::high_resolution_clock::now();
+		std::chrono::duration<double> construction_dur = 
+			std::chrono::duration_cast<std::chrono::duration<double>>(construction_end - construction_start);
+
+
 		Benchmark<GiantLUTCast> mark = Benchmark<GiantLUTCast>(glt);
-		std::cout << "...lut size (MB): " << glt.lut_size() / MB << std::endl;
+		std::cout << "...lut size (MB): " << glt.memory() / MB << std::endl;
 		std::cout << "...Running grid benchmark" << std::endl;
-		#ifdef VERBOSE_LOG_PATH
-		log.str("");
-		mark.set_log(&log);
-		#endif
-		// run the benchmark
-		mark.grid_sample(GRID_STEP, GRID_RAYS, GRID_SAMPLES);
-		#ifdef VERBOSE_LOG_PATH
-		save_log(log, VERBOSE_LOG_PATH "/glt.csv");
-		#endif
+		if (DO_LOG) {
+			tlog.str("");
+			mark.set_log(&tlog);
+			summary << "glt," << construction_dur.count() << "," << glt.memory() << std::endl;
+		}
+		if (FLAGS_which_benchmark == "grid")
+			mark.grid_sample(GRID_STEP, GRID_RAYS, GRID_SAMPLES);
+		else if (FLAGS_which_benchmark == "random")
+			mark.random_sample(RANDOM_SAMPLES);
+		if (DO_LOG) {
+			save_log(tlog, FLAGS_log_path+"/glt.csv");
+		}
+	}
+
+	if (DO_LOG) {
+		save_log(summary, FLAGS_log_path+"/summary.csv");
 	}
 
 	std::cout << "done" << std::endl;

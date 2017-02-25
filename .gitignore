@@ -4,3 +4,5 @@ pywrapper/*.so
 pywrapper/*.cpp
 pywrapper/test.png
 .DS_Store
+paper/data/basement
+paper/data/synthetic

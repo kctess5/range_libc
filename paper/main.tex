@@ -15,12 +15,21 @@
 % on the last page of the document
 
 % The following packages can be found on http:\\www.ctan.org
-%\usepackage{graphics} % for pdf, bitmapped graphics files
+\usepackage{graphicx}
+\usepackage{tabu}
+% \usepackage{graphics} % for pdf, bitmapped graphics files
 %\usepackage{epsfig} % for postscript graphics files
 %\usepackage{mathptmx} % assumes new font selection scheme installed
 %\usepackage{times} % assumes new font selection scheme installed
 %\usepackage{amsmath} % assumes amsmath package installed
 %\usepackage{amssymb}  % assumes amsmath package installed
+
+
+\newcommand{\img}[1]{\begin{center}\includegraphics[width=\columnwidth]{{#1}}\end{center}}
+
+\newcommand{\imgFrame}[1]{\begin{center}\frame{\includegraphics[width=\columnwidth]{{#1}}}\end{center}}
+
+% \begin{center}\frame{\includegraphics[width=\columnwidth]{synthetic.png}}\end{center}
 
 \title{\LARGE \bf
 Compressed Directional Distance Transform for Fast 2D Ray Casting
@@ -58,27 +67,42 @@ Lorem Ipsum is simply dummy text of the printing and typesetting industry. Lorem
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \section{INTRODUCTION}
 
-The ray cast operation is an important sub-problem for robot localization using distance sensors to detect the environment. In particle filter localization, particles are re-weighted according to a Bayesian update equation which relies on ray casting to determine the ground truth distance between the hypothesis pose and obstacles in a map. Effective particle filters often maintain thousands of particles, each of which must be reweighted tens of times per second, and each re-weighting may require tens of ray casts. As a result, millions of ray cast operations may be resolved per second, posing a significant computational challenge for resources constrained systems.
+The ray cast operation is an important sub-problem for robot localization \cite{localization} using distance sensors to detect the environment. In particle filter localization, particles are re-weighted according to a Bayesian update equation which relies on ray casting to determine the ground truth distance between the hypothesis pose and obstacles in a map. Effective particle filters often maintain thousands of particles, each of which must be reweighted tens of times per second, and each re-weighting may require tens of ray casts. As a result, millions of ray cast operations may be resolved per second, posing a significant computational challenge for resources constrained systems.
 
-To combat this challenge, Fox et al. [1999] suggest the use of a large three-dimensional lookup table (LUT) to store expected ranges for each discrete (x,y,Θ) state. While this is simple to implement and does result in large speed improvements as compared to ray casting, it can be prohibitively memory intensive for large maps and/or resource constrained systems. We propose an analogous data structure called a Compressed Directional Distance Transform (CDDT) which requires significantly less memory and precomputation time while still allowing near constant time ray casting queries.
+To combat this challenge, Fox et al. \cite{localization} suggest the use of a large three-dimensional lookup table (LUT) to store expected ranges for each discrete $(x,y,\theta)$ state. While this is simple to implement and does result in large speed improvements as compared to ray casting, it can be prohibitively memory intensive for large maps and/or resource constrained systems. We propose an analogous data structure called a Compressed Directional Distance Transform (CDDT) which requires significantly less memory and precomputation time while still allowing near constant time ray casting queries.
 
-Many robotic applications require three dimensional maps, however that is considered outside the scope of this work since many data structures exist for accelerating 3D ray casting, such as the bounded volume hierarchy and related variants. The five dimensional table required to precompute expected ranges for a discrete state space (x,y,z,Θ,Φ) would be prohibitively expensive to both compute and store, so 3D acceleration data structures are exclusively used when 3D ray casting is required. Though our approach does extend to higher dimensionality and would be smaller than the analogous five dimensional table, it would still be prohibitively expensive in greater than two dimensions, thus we do not consider it here.
+Many robotic applications require three dimensional maps, however that is considered outside the scope of this work since many data structures exist for accelerating 3D ray casting, such as the bounded volume hierarchy and related variants. The five dimensional table required to precompute expected ranges for a discrete state space $(x,y,z,\theta,\phi)$ would be prohibitively expensive to both compute and store, so 3D acceleration data structures are exclusively used when 3D ray casting is required. Though our approach does extend to higher dimensionality and would be smaller than the analogous five dimensional table, it would still be prohibitively expensive in greater than two dimensions, thus we do not consider it here.
 
 \section{RELATED WORK}
 
 Several widely used algorithms exist for ray casting in a two dimensional space. Due to varied handling of edge cases and ambiguities in the problem of determining distance between any point and the nearest obstacle in a particular direction, most 2D ray casting algorithms do not provide exactly consistent results for every query. However, on average error between results from each of the methods discussed is small.
 
-\subsection{Bresenham’s Line}
+\subsection{Bresenham's Line}
 
-First, confirm that you have the correct template for your paper size. This template has been tailored for output on the US-letter paper size. 
-It may be used for A4 paper size if the paper size setting is suitably modified.
+Bresenham's line algorithm \cite{bresenham} incrementally determines the set of pixels that approximate the trajectory of query ray starting from the query point $(x,y)$ and progressing in the $\theta$ direction. The algorithm terminates once the nearest occupied pixel is discovered, and the euclidean distance between that occupied pixel and the query $(x,y)$ is reported. This algorithm is widely implemented in particle filters due to its simplicity and ability to operate on a dynamic map. The primary disadvantage is that it is slow, potentially requiring hundreds of memory accesses for a single ray cast. While actual performance is highly environment dependent, Bresenham’s Line algorithm is linear in map size in the worst case.
 
 \subsection{Ray Marching Distance Transforms}
 
-Similar to Bresenham’s Line algorithm, ray marching [citation below] checks points along the line radiating outwards from the query point until an obstacle is encountered. The primary difference is that ray marching makes larger steps along the query ray, avoiding unnecessary memory reads. Beginning at the query point (x,y) the ray marching algorithm proceeds in the theta direction, stepping along the line by the minimum distance between each query point and the nearest obstacle. The algorithm terminates when the query point falls on an obstacle in the map. A precomputed euclidean distance transform of the map provides the distance between each query point and the nearest obstacle in any direction.
+Similar to Bresenham's Line algorithm, ray marching \cite{raymarching} checks points along the line radiating outwards from the query point until an obstacle is encountered. The primary difference is that ray marching makes larger steps along the query ray, avoiding unnecessary memory reads. Beginning at the query point $(x,y)$ the ray marching algorithm proceeds in the theta direction, stepping along the line by the minimum distance between each query point and the nearest obstacle. The algorithm terminates when the query point falls on an obstacle in the map. A precomputed euclidean distance transform of the map provides the distance between each query point and the nearest obstacle in any direction.
+
+\begin{figure}[h]
+\img{spheretrace.jpg}
+\caption{Visualization of ray marching starting at $p_0$ towards $p_4$. Green circle around each query point represents the distance to the nearest obstacle from that point. Blue dots represent the query points, labeled in order of execution. From \cite{sphere:source}.}
+\label{spheres}
+\end{figure}
+
 Ray marching is on average much faster than Bresenham’s line, but edge cases exist in which the performance is equivalent. For example, a query ray which travels closely parallel to a wall will make small steps between each query point for the whole length of the ray. As a result, the performance of ray marching has a long tail distribution which can be problematic for near real time algorithms. Though highly scene dependent, on average ray marching runtime is roughly logarithmic in distance between obstacles, though in the worst case it is linear in map size.
 
-[FIGURE HERE]
+% \begin{figure}[thpb]
+%       \centering
+%       \framebox{\parbox{3in}{We suggest that you use a text box to insert a graphic (which is ideally a 300 dpi TIFF or EPS file, with all fonts embedded) because, in an document, this method is somewhat more stable than directly inserting a picture.
+% }}
+%       %\includegraphics[scale=1.0]{figurefile}
+%       \caption{Inductance of oscillation winding on amorphous
+%       magnetic core versus DC bias magnetic field}
+%       \label{figurelabel}
+%   \end{figure}
+
 
 \subsection{Lookup Table}
 
@@ -92,9 +116,25 @@ One method to improve accuracy of queries which fall between discrete states is 
 
 Although the three dimensional table used to store precomputed ray cast solutions for a discrete state space is inherently large, it is highly compressible. This is most apparent in the cardinal directions, in which adjacent values along a particular dimension of the table increase by exactly one unit of distance for unobstructed positions. Our data structure is designed to compress this redundancy while still allowing for fast queries in near constant time. We accomplish this though through what we refer to as a compressed directional distance transform (CDDT) described here.
 
-The euclidean distance transform (EDT) of an occupancy grid map stores the distance to the nearest obstacle in any direction for each point $(x,y)$ in the map. In contrast, a directional distance transform (DDT) stores the distance to the nearest obstacle in a particular direction for each point $(x,y)$ in the map. The key difference between a single Θ slice of the LUT and a directional distance transform is the way in which it is computed. To compute the LUT slice, ray casting is performed in the $\theta_d$ direction from every $(x_d,y_d)$ in the map using another algorithm such as Bresenham’s line. In contrast, to compute the DDT, the obstacles in the map are rotated about the center of the map by $-\theta_d$ and the values of each column in the DDT may be directly computed as a sawtooth function which goes to zero whenever an obstacle is encountered in that column. Thus, each column in the DDT may be characterized as a sawtooth function as is illustrated by figure [DDT response] below. While it is true that the rotation of the occupancy grid introduces small errors as compared to ray casting for each cell, as previously discussed these small errors do not significantly impact particle filter localization performance due to the use of a probabilistic error model. In practice, errors induced by map rotation are dominated by those inherently present in distance sensors.
+\begin{figure}[h]
+\img{basement_bw_cropped.png}
+\caption{Occupancy grid map of the Stata basement loop. 1200x1200}
+\label{stata}
+\end{figure}
 
-[DDT GRAPHICS HERE]
+The euclidean distance transform (EDT) of an occupancy grid map stores the distance to the nearest obstacle in any direction for each point $(x,y)$ in the map. In contrast, a directional distance transform (DDT) stores the distance to the nearest obstacle in a particular direction for each point $(x,y)$ in the map. The key difference between a single Θ slice of the LUT and a directional distance transform is the way in which it is computed. To compute the LUT slice, ray casting is performed in the $\theta_d$ direction from every $(x_d,y_d)$ in the map using another algorithm such as Bresenham’s line. In contrast, to compute the DDT, the obstacles in the map are rotated about the center of the map by $-\theta_d$ and the values of each column in the DDT may be directly computed as a sawtooth function which goes to zero whenever an obstacle is encountered in that column. Thus, each column in the DDT may be characterized as a sawtooth function with uneven periodicity. While it is true that the rotation of the occupancy grid introduces small errors as compared to ray casting for each cell, as previously discussed small errors do not significantly impact particle filter localization performance due to the use of a probabilistic error model. In practice, errors induced by map rotation are dominated by those inherently present in distance sensors.
+
+\begin{figure}[h]
+\img{slice0_cddt_basement.png}
+\caption{A single slice of the DDT generated from the CDDT data structure for $\theta=0$. The value of each pixel represents the distance to the nearest obstacle in the upwards direction with respect to the image above. Each column may be thought of as a sawtooth wave, and the points where the wave is zero are projected into the CDDT bin for that column for later indexing. The blue plot indicates the number of zero points projected into each CDDT bin. The compression factor of 267 is computed as two times the size of the corresponding LUT slice divided by the size of this slice in the CDDT. The factor of two is due to the use of rotational symmetry to reduce the number of slices maintained in the CDDT with respect to the LUT.}
+\label{cddt:slice0}
+\end{figure}
+
+\begin{figure}[h]
+\img{slice41_cddt_basement.png}
+\caption{Another slice of the DDT generated from the CDDT data structure for $\theta=2.385$.}
+\label{cddt:slice41}
+\end{figure}
 
 The conversion from a DDT to a CDDT is performed by converting the sawtooth response of each column into a set of points in which the sawtooth wave goes to zero. This conversion is lossless in the sense that each element of the table may be recovered as a function of the nearest zero point in a particular direction. If the set of zero points is sorted, then the magnitude of the saw tooth wave at any point in the original DDT may be quickly discovered by performing binary search for the nearest zero point in that column and finding the distance between the query point and that zero point. This losslessness and fast indexing allows for ray cast queries to be quickly resolved without storing the entire DDT, but rather by storing the sorted lists of zero points.
 For sake of efficiency, the full DDT need not be computed, but rather the CDDT may be built directly by projecting each obstacle into the coordinate space of each theta slice and storing a list of y-coordinates for each discrete x-coordinate. Once all scene geometry is projected into the table, each list of zero points is sorted to facilitate indexing.
@@ -113,6 +153,7 @@ While conceptually simple, implementing the CDDT data structure construction and
 \subsection{Rotational Symmetry}
 
 A side effect of extracting the zero points from each column of the DDT is the introduction of rotational symmetry. For any given theta, the zero points accumulated by projecting scene geometry into the requisite coordinate space are mirror images of those accumulated by projecting scene geometry into the theta+pi direction. Therefore, one need only compute the CDDT for the range of discrete thetas from $[0,\pi)$ and the DDT for the range $[0,2\pi)$ may be inferred, resulting in factor of two further reduction in memory usage.
+
 In addition to the aforementioned reduction in memory usage, rotational symmetry may be exploited in scenarios where ray casts are performed radially around a single point. While traversing the data structure to resolve a ray cast in a particular $(x,y,\theta)$, the ray cast for $(x,y,\theta+\pi)$ may be resolved with a single additional memory read. Once the index i of the nearest zero point in the theta direction $z_{\theta}$ is discovered, the index of the nearest zero point in the opposite direction is simply i-1. For example, in robots with laser scanners sweeping angles larger than 180°, this symmetry can be used to reduce the number of data structure traversals required to compute the sensor model by up to a factor of two.
 
 \subsection{Incremental Update}
@@ -129,20 +170,95 @@ Skip list traversal is likely to be less efficient than binary search on sorted 
 
 By removing entries in the CDDT which can never possibly result in a ray collision, it is possible to further reduce the memory footprint of the data structure. Consider a 3x3 block of obstacles in an otherwise empty map. The center obstacle will never be the nearest neighbor in any ray casting query, because any such query would first intersect with one of the 8 surrounding obstacles. To exploit this, one can take the morphological edge map of the occupancy grid map prior to CDDT generation without loss of generality. This can result in significant memory usage and data structure construction time reductions in dense maps where the number of obstacles adjacent to empty cells is small compared to the total number of obstacles. Prior to performing ray casting on the CDDT data structure, we check the occupancy grid to ensure that the query point itself is not an obstacle and return a distance of zero if so in order to prevent incorrect results when ray casting from the middle of obstacles which may be removed by the morphological operation.
 
+\begin{figure}[h]
+\img{slice0_pcddt_basement.png}
+\caption{The same slice of the DDT as \ref{cddt:slice0}. Notice that the number of elements projected into each CDDT bin is less peaky since the pruning operation removes most elements of long lines of obstacles. Also note the higher compression factor of 415 for this slice, increased from 267 in the unpruned CDDT.}
+\label{pcddt:slice0}
+\end{figure}
+
 Additionally, consider a line of obstacles aligned along the Y-axis. Every element in this line will be projected into a single list of zero points for the theta=0 slice of the CDDT. However, the middle elements of the line will never result in a collision. Any ray cast from adjacent states in the $\theta=0$ direction will return early in the occupancy grid check, and any ray cast from outside the wall will collide with one of the edge-most obstacles in that line. Therefore in the theta=0 slice, one may discard the zero points corresponding to the middle elements without introducing error. This form of optimization is simple to compute in the cardinal directions, but non-trivial for arbitrary theta not aligned with an axis. Rather than attempting to analytically determine which obstacles may be discarded, it is simpler to prune the data structure by ray casting from every possible state (as in the LUT data structure) and discard any zero point which is unused. 
 
 Pruning does also increase precomputation time rendering it incompatible with incremental update, however the reduction of memory usage is worthwhile for static maps. In addition to memory reduction, we find that pruning slightly improves runtime performance, likely as a result of improved caching characteristics.
 
 \section{EXPERIMENTS}
 
-We have implemented the proposed algorithm in C++, as well as Bresenham’s Line, ray marching, and the LUT approach for comparison. Our source code is available for use and analysis [TODO add a link to github], and Python wrappers are also provided for easier usage.
+\begin{figure}[h]
+\img{synthetic_cropped.png}
+\caption{Occupancy grid map for the synthetic map example.}
+\label{violin:basement:grid}
+\end{figure}
 
+We have implemented the proposed algorithm in C++, as well as Bresenham’s Line, ray marching, and the LUT approach for comparison. Our source code is available for use and analysis [TODO add a link to github], and Python wrappers are also provided for easier usage. All benchmarks were performed on a desktop computer on a Intel Core i5-4590 CPU @ 3.30GHz with 16GB DDR3 ram @ 1333MHz, running Ubuntu 14.04.
 
 \subsection{Synthetic Benchmarks}
 
-We evaluate algorithm performance in two synthetic benchmarks, using two different maps. The first benchmark computes a ray cast for each point in a uniformly spaced grid over the three dimensional state space. The second benchmark performs a large number of ray casts for randomly generated states.
 
-[INSERT GRAPHIC HERE]
+\begin{figure}[h]
+\img{grid_trial2_basement_cropped.png}
+\caption{Violin plots demonstrating histogram of completion time over a large number of queries for each ray cast method. Basement map. X axis shows time in milliseconds, and Y axis shows the number of queries that completed after that amount of time.}
+\label{violin:basement:grid}
+\end{figure}
+
+\begin{figure}[h]
+\img{grid_trial2_synthetic_cropped.png}
+\caption{Violin plots demonstrating histogram of completion time over a large number of queries for each ray cast method. Synthetic map. X axis shows time in milliseconds, and Y axis shows the number of queries that completed after that amount of time.}
+\label{violin:basement:grid}
+\end{figure}
+
+\begin{figure}[h]
+\img{random_trial2_basement_cropped.png}
+\caption{Violin plots for a large number of randomly sampled queries. Basement map. The random access pattern degrades the caching performance variably for each method.}
+\label{violin:basement:random}
+\end{figure}
+
+\begin{figure}[h]
+\img{random_trial2_synthetic_cropped.png}
+\caption{Violin plots for a large number of randomly sampled queries. Synthetic map. The random access pattern degrades the caching performance variably for each method.}
+\label{violin:basement:random}
+\end{figure}
+
+We evaluate algorithm performance in two synthetic benchmarks, using two different maps. The so called Synthetic map was created with photoshop, whereas the basement map was created via a SLAM algorithm on the RACECAR platform [cite this?]. The first benchmark computes a ray cast for each point in a uniformly spaced grid over the three dimensional state space. The second benchmark performs a large number of ray casts for randomly generated states.
+
+
+\begin{figure}[h]
+\begin{center}
+\begin{tabular}{ | m{8em} | m{2.3cm}| m{1.5cm} | } 
+\hline
+ \multicolumn{3}{|c|}{Basement Map, $\theta$ discretization: 108} \\
+ \hline
+ Method & Memory Usage & Init. Time \\
+ \hline
+ Bresenham's Line & 1.37 MB & 0.006 sec  \\
+ Ray Marching & 5.49 MB & 0.16 sec  \\
+ CDDT & 6.34 MB & 0.067 sec  \\
+ PCDDT & 4.07 MB & 2.2 sec  \\
+ Lookup Table & 296.63 MB & 15.3 sec  \\
+\hline
+\end{tabular}
+\end{center}
+\caption{The construction time and memory footprint of each method for the Basement map.}
+\label{table:basement:init}
+\end{figure}
+
+\begin{figure}[h]
+\begin{center}
+\begin{tabular}{ | m{8em} | m{2.3cm}| m{1.5cm} | } 
+\hline
+ \multicolumn{3}{|c|}{Synthetic Map, $\theta$ discretization: 108} \\
+ \hline
+ Method & Memory Usage & Init. Time \\
+ \hline
+ Bresenham's Line & 1 MB & 0.004 sec  \\
+ Ray Marching  & 4 MB & 0.13 sec  \\
+ CDDT & 2.71 MB & 0.03 sec  \\
+ PCDDT & 1.66 MB & 0.74 sec  \\
+ Lookup Table & 216 MB & 9.1 sec  \\
+\hline
+\end{tabular}
+\end{center}
+\caption{The construction time and memory footprint of each method for the Basement map.}
+\label{table:basement:init}
+\end{figure}
 
 \subsection{Particle Filter Experiments}
 
@@ -150,7 +266,11 @@ To simulate real world operating conditions, we have implemented a particle filt
 
 Our sensor model is designed for the Hokuyo UST-10LX lidar scanner used aboard the RACECAR platform [cite this?], which features a 270° field of view. Since this FOV is in excess of 180° we exploit radial symmetry discussed in [radial symmetry section] to simultaneously ray cast in the theta and $\theta+180°$ direction when possible. As demonstrated in the below figure, this optimization reduces the number of data structure traversals required by a third as compared to the other methods evaluated, while still resolving the same number of ray casts. As is standard in such applications, we downsample the resolution of the laser scanner to reduce the number of ray casts per sensor model evaluations and to make the probability distribution over the state space less peaked.
 
-[INSERT GRAPHIC HERE]
+\begin{figure}[h]
+\img{particle_trial2_basement_cropped.png}
+\caption{Violin plots for ray casting completion times during the execution of a particle filter. Basement map. Ray casting is primarily done inside of hallways, reducing the mean ray length and thereby improving Bresenham's Line performance. CDDT and PCDDT exploiting radial symmetry while resolving the sensor model.}
+\label{violin:basement:random}
+\end{figure}
 
 \section{CONCLUSIONS}
 
@@ -176,47 +296,115 @@ In future work we aim to further develop our approach to allow for incremental m
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \section*{APPENDIX}
 
-Appendixes should appear before the acknowledgment.
+\begin{figure}[h]
+\begin{center}
+\begin{tabular}{ | m{1.05cm} | m{1.3cm}| m{1.6cm} | m{1.25cm} | m{1.25cm}|  } 
+\hline
+\multicolumn{5}{|c|}{Basement Map, Random Sampling Ray Cast} \\
+\hline
+Method & Mean & Median & IQR & Speedup \\
+\hline
+BL & 9.66e-07 & 1.05e-06 & 1.08e-06 & 1 \\
+RM & 2.12e-07 & 1.68e-07 & 1.64e-07 & 4.56 \\
+CDDT & 1.58e-07 & 1.49e-07 & 9.1e-08 & 6.13 \\
+PCDDT & 1.41e-07 & 1.32e-07 & 6.5e-08 & 6.83 \\
+LUT & 1.89e-07 & 1.7e-07 & 2.1e-08 & 5.10 \\
+\hline
+\end{tabular}
+\end{center}
+\caption{The construction time and memory footprint of each method for the Basement map.}
+\label{table:basement:init}
+\end{figure}
 
-\section*{ACKNOWLEDGMENT}
+\begin{figure}[h]
+\begin{center}
+\begin{tabular}{ | m{1.05cm} | m{1.3cm}| m{1.6cm} | m{1.25cm} | m{1.25cm}|  } 
+\hline
+\multicolumn{5}{|c|}{Basement Map, Grid Sampling Ray Cast} \\
+\hline
+Method & Mean & Median & IQR & Speedup \\
+\hline
+BL & 8.29e-07 & 9.24e-07 & 9.53e-07 & 1 \\
+RM & 1.65e-07 & 1.26e-07 & 1.34e-07 & 5.02 \\
+CDDT & 7.69e-08 & 7.2e-08 & 1.6e-08 & 10.78 \\
+PCDDT & 7.32e-08 & 7e-08 & 1.4e-08 & 11.33 \\
+LUT & 6.13e-08 & 4.3e-08 & 4.6e-08 & 13.53 \\
+\hline
+\end{tabular}
+\end{center}
+\caption{The construction time and memory footprint of each method for the Basement map.}
+\label{table:basement:init}
+\end{figure}
 
-Is this part necessary?
+\begin{figure}[h]
+\begin{center}
+\begin{tabular}{ | m{1.05cm} | m{1.3cm}| m{1.6cm} | m{1.25cm} | m{1.25cm}|  } 
+\hline
+\multicolumn{5}{|c|}{Basement Map, Particle Filter Ray Cast} \\
+\hline
+Method & Mean & Median & IQR & Speedup \\
+\hline
+BL & 3.89e-07 & 2.67e-07 & 2.31e-07 & 1 \\
+RM & 1.56e-07 & 1.18e-07 & 9.4e-08 & 2.49 \\
+CDDT & 7.67e-08 & 7.8e-08 & 5.7e-08 & 5.07 \\
+PCDDT & 7.22e-08 & 7.4e-08 & 5.4e-08 & 5.39 \\
+LUT & 4.35e-08 & 4.1e-08 & 5e-09 & 8.94 \\
+\hline
+\end{tabular}
+\end{center}
+\caption{The construction time and memory footprint of each method for the Basement map.}
+\label{table:basement:init}
+\end{figure}
 
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\begin{figure}[h]
+\begin{center}
+\begin{tabular}{ | m{1.05cm} | m{1.3cm}| m{1.6cm} | m{1.25cm} | m{1.25cm}|  } 
+\hline
+\multicolumn{5}{|c|}{Synthetic Map, Random Sampling Ray Cast} \\
+\hline
+Method & Mean & Median & IQR & Speedup \\
+\hline
+BL & 1.19e-06 & 1.41e-06 & 7.71e-07 & 1 \\
+RM & 1.52e-07 & 1.25e-07 & 1.05e-07 & 7.81 \\
+CDDT & 1.24e-07 & 1.05e-07 & 5.3e-08 & 9.59 \\
+PCDDT & 1.19e-07 & 1.01e-07 & 5e-08 & 10.02 \\ 
+LUT & 1.82e-07 & 1.68e-07 & 1.4e-08 & 6.55 \\
+\hline
+\end{tabular}
+\end{center}
+\caption{The construction time and memory footprint of each method for the Basement map.}
+\label{table:basement:init}
+\end{figure}
 
-References are important to the reader; therefore, each citation must be complete and correct. If at all possible, references should be commonly available publications.
+\begin{figure}[h]
+\begin{center}
+\begin{tabular}{ | m{1.05cm} | m{1.3cm}| m{1.6cm} | m{1.25cm} | m{1.25cm}|  } 
+\hline
+\multicolumn{5}{|c|}{Synthetic Map, Grid Sampling Ray Cast} \\
+\hline
+Method & Mean & Median & IQR & Speedup \\
+\hline
+BL & 1.03e-06 & 1.20e-06 & 6.79e-07 & 1 \\ 
+RM & 1.27e-07 & 1.03e-07 & 1.06e-07 & 8.06 \\
+CDDT & 7.02e-08 & 6.8e-08 & 1e-08 & 14.63 \\
+PCDDT & 6.94e-08 & 6.8e-08 & 9e-09 & 14.80 \\
+LUT & 6.33e-08 & 4.2e-08 & 4.6e-08 & 16.21 \\
+\hline
+\end{tabular}
+\end{center}
+\caption{The construction time and memory footprint of each method for the Basement map.}
+\label{table:basement:init}
+\end{figure}
 
 \begin{thebibliography}{99}
 
-\bibitem{c1} G. O. Young, ÒSynthetic structure of industrial plastics (Book style with paper title and editor),Ó 	in Plastics, 2nd ed. vol. 3, J. Peters, Ed.  New York: McGraw-Hill, 1964, pp. 15Ð64.
-\bibitem{c2} W.-K. Chen, Linear Networks and Systems (Book style).	Belmont, CA: Wadsworth, 1993, pp. 123Ð135.
-\bibitem{c3} H. Poor, An Introduction to Signal Detection and Estimation.   New York: Springer-Verlag, 1985, ch. 4.
-\bibitem{c4} B. Smith, ÒAn approach to graphs of linear forms (Unpublished work style),Ó unpublished.
-\bibitem{c5} E. H. Miller, ÒA note on reflector arrays (Periodical styleÑAccepted for publication),Ó IEEE Trans. Antennas Propagat., to be publised.
-\bibitem{c6} J. Wang, ÒFundamentals of erbium-doped fiber amplifiers arrays (Periodical styleÑSubmitted for publication),Ó IEEE J. Quantum Electron., submitted for publication.
-\bibitem{c7} C. J. Kaufman, Rocky Mountain Research Lab., Boulder, CO, private communication, May 1995.
-\bibitem{c8} Y. Yorozu, M. Hirano, K. Oka, and Y. Tagawa, ÒElectron spectroscopy studies on magneto-optical media and plastic substrate interfaces(Translation Journals style),Ó IEEE Transl. J. Magn.Jpn., vol. 2, Aug. 1987, pp. 740Ð741 [Dig. 9th Annu. Conf. Magnetics Japan, 1982, p. 301].
-\bibitem{c9} M. Young, The Techincal Writers Handbook.  Mill Valley, CA: University Science, 1989.
-\bibitem{c10} J. U. Duncombe, ÒInfrared navigationÑPart I: An assessment of feasibility (Periodical style),Ó IEEE Trans. Electron Devices, vol. ED-11, pp. 34Ð39, Jan. 1959.
-\bibitem{c11} S. Chen, B. Mulgrew, and P. M. Grant, ÒA clustering technique for digital communications channel equalization using radial basis function networks,Ó IEEE Trans. Neural Networks, vol. 4, pp. 570Ð578, July 1993.
-\bibitem{c12} R. W. Lucky, ÒAutomatic equalization for digital communication,Ó Bell Syst. Tech. J., vol. 44, no. 4, pp. 547Ð588, Apr. 1965.
-\bibitem{c13} S. P. Bingulac, ÒOn the compatibility of adaptive controllers (Published Conference Proceedings style),Ó in Proc. 4th Annu. Allerton Conf. Circuits and Systems Theory, New York, 1994, pp. 8Ð16.
-\bibitem{c14} G. R. Faulhaber, ÒDesign of service systems with priority reservation,Ó in Conf. Rec. 1995 IEEE Int. Conf. Communications, pp. 3Ð8.
-\bibitem{c15} W. D. Doyle, ÒMagnetization reversal in films with biaxial anisotropy,Ó in 1987 Proc. INTERMAG Conf., pp. 2.2-1Ð2.2-6.
-\bibitem{c16} G. W. Juette and L. E. Zeffanella, ÒRadio noise currents n short sections on bundle conductors (Presented Conference Paper style),Ó presented at the IEEE Summer power Meeting, Dallas, TX, June 22Ð27, 1990, Paper 90 SM 690-0 PWRS.
-\bibitem{c17} J. G. Kreifeldt, ÒAn analysis of surface-detected EMG as an amplitude-modulated noise,Ó presented at the 1989 Int. Conf. Medicine and Biological Engineering, Chicago, IL.
-\bibitem{c18} J. Williams, ÒNarrow-band analyzer (Thesis or Dissertation style),Ó Ph.D. dissertation, Dept. Elect. Eng., Harvard Univ., Cambridge, MA, 1993. 
-\bibitem{c19} N. Kawasaki, ÒParametric study of thermal and chemical nonequilibrium nozzle flow,Ó M.S. thesis, Dept. Electron. Eng., Osaka Univ., Osaka, Japan, 1993.
-\bibitem{c20} J. P. Wilkinson, ÒNonlinear resonant circuit devices (Patent style),Ó U.S. Patent 3 624 12, July 16, 1990. 
+\bibitem{localization} Sebastian Thrun, Dieter Fox, Wolfram Burgard and Frank Dellaert. “Robust Monte Carlo Localization for Mobile Robots.” Artificial Intelligence Journal. 2001
 
+\bibitem{bresenham} J. Bresenham, “Algorithm for Computer Control of a Digital Plotter,” IBM Systems Journal, vol. 4, no. 1, pp. 25-30, 1965
 
+\bibitem{raymarching} K. Perlin and E. M. Hoffert, “Hypertexture.” Computer Graphics, vol 23, no. 3, pp. 297-306, 1989.
 
-
-
+\bibitem{sphere:source} Pharr, M., and R. Fernando. GPU Gems 2: Programming Techniques for High-Performance Graphics and General-Purpose Computation: Addison Wesley Professional. 2005. http://http.developer.nvidia.com/GPUGems2/gpugems2\_chapter08.html
 
 \end{thebibliography}
-
-
-
-
 \end{document}

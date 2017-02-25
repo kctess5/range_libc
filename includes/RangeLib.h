@@ -284,6 +284,12 @@ namespace ranges {
 		bool error() {
 			return has_error;
 		}
+
+		// returns memory usage in bytes
+		int memory() {
+			// std::cout << sizeof(bool) * width * height << std::endl;
+			return sizeof(bool) * width * height;
+		}
 	};
 
 	struct DistanceTransform
@@ -348,6 +354,10 @@ namespace ranges {
 			//if there's an error, display it
 			if(error) std::cout << "encoder error " << error << ": "<< lodepng_error_text(error) << std::endl;
 			return error;
+		}
+
+		int memory() {
+			return width*height*sizeof(float);
 		}
 	};
 
@@ -463,7 +473,7 @@ namespace ranges {
 			return max_range; 
 		}
 
-		int memory() { return map.width*map.height; }
+		int memory() { return map.memory(); }
 	};
 
 	class RayMarching : public RangeMethod
@@ -508,7 +518,7 @@ namespace ranges {
 			return max_range; 
 		}
 
-		int memory() { return map.width*map.height*2; }
+		int memory() { return distImage.memory(); }
 	protected:
 		DistanceTransform distImage;
 		float distThreshold = 0.0;
@@ -712,7 +722,7 @@ namespace ranges {
 			return lut_size * sizeof(float);
 		}
 
-		int memory() { return lut_size(); }
+		int memory() { return lut_size()+map.memory()+lut_translations.size()*sizeof(float); }
 
 		// mark all of the LUT entries that are potentially useful
 		// remove all LUT entries that are not potentially useful
@@ -1352,9 +1362,6 @@ namespace ranges {
 						#else
 						lut_row.push_back(r);
 						#endif
-
-
-						
 					}
 					lut_slice.push_back(lut_row);
 				}
@@ -1490,6 +1497,34 @@ namespace benchmark {
 			std::cout << " -avg time per ray: " << ( t_accum / (float) num_cast) << " sec" << std::endl;
 			std::cout << " -rays cast: " << num_cast << std::endl;
 			std::cout << " -total time: " << t_accum << " sec" << std::endl;
+		}
+
+		void random_sample(int num_samples) {
+			std::default_random_engine generator;
+			generator.seed(clock());
+			std::uniform_real_distribution<float> randx = std::uniform_real_distribution<float>(1.0,map->width - 1.0);
+			std::uniform_real_distribution<float> randy = std::uniform_real_distribution<float>(1.0,map->height - 1.0);
+			std::uniform_real_distribution<float> randt = std::uniform_real_distribution<float>(0.0,M_2PI);
+
+			double t_accum = 0;
+			for (int i = 0; i < num_samples; ++i)
+			{
+				float x = randx(generator);
+				float y = randy(generator);
+				float angle = randt(generator);
+
+				auto start_time = std::chrono::high_resolution_clock::now();
+				volatile float r = range.calc_range(x,y,angle);
+				auto end_time = std::chrono::high_resolution_clock::now();
+				std::chrono::duration<double> time_span = std::chrono::duration_cast<std::chrono::duration<double>>(end_time - start_time);
+
+				t_accum += time_span.count();
+				if (log) (*log) << x << "," << y << "," << angle << "," << time_span.count() << std::endl;
+			}
+
+			std::cout << "finished random sample after: " << t_accum << " sec" << std::endl;
+			std::cout << " -avg time per ray: " << ( t_accum / (float) num_samples) << " sec" << std::endl;
+			std::cout << " -rays cast: " << num_samples << std::endl;
 		}
 
 	protected:

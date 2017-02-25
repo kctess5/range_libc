@@ -158,6 +158,9 @@ class SliceScroller(object):
         plt.tight_layout()
         self.ax1.cla()
         self.ax2.cla()
+
+        self.ax1.axis('off')
+
         if not isinstance(self.ddts[self.ind], np.ndarray):
         # if self.ddts[self.ind] == None:
             self.ddts[self.ind] = np.sqrt(self.cddt.slices[self.ind].make_ddt(True))
@@ -165,12 +168,12 @@ class SliceScroller(object):
         ys = map(len, self.cddt.slices[self.ind].zeros)
         compression_factor = 2*self.cddt.map.width * self.cddt.map.height / (sum(ys))
 
-        self.ax1.set_title("DDT - Reconstructed from a slice of the CDDT, compression factor: " + str(compression_factor))
+        self.ax1.set_title("DDT - Reconstructed from a slice of the PCDDT, compression factor: " + str(compression_factor))
         self.ax1.set_ylabel('Theta = %s' % self.cddt.slices[self.ind].theta)
         self.ax1.imshow(self.ddts[self.ind],cmap="gray",interpolation='nearest', aspect='auto')
         
        
-        self.ax2.set_title("Number of entries in each CDDT bin")
+        self.ax2.set_title("Number of entries projected into each PCDDT bin")
         self.ax2.plot(ys)
         self.fig.canvas.draw()
         # self.im.set_data(self.ddt)
