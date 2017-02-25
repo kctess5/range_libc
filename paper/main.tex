@@ -274,7 +274,7 @@ Our sensor model is designed for the Hokuyo UST-10LX lidar scanner used aboard t
 
 \section{CONCLUSIONS}
 
-This work demonstrates that the proposed CDDT algorithm may be used in mobile robotics to accelerate sensor model computation when localizing in a two dimensional occupancy grid map. While the precomputed LUT approach is generally 1.5 to 4 times faster than the proposed algorithm, the memory footprint of the proposed data structure is significantly smaller which may be desirable for resource constrained systems. Other than the LUT approach, CDDT is significantly faster than the other methods evaluated, typically ranging from a factor of 2 to 20.
+This work demonstrates that the proposed CDDT algorithm may be used in mobile robotics to accelerate sensor model computation when localizing in a two dimensional occupancy grid map. While the precomputed LUT approach is generally 1.1 to 1.7 times faster than the proposed algorithm, the memory footprint of the proposed data structure is significantly smaller which may be desirable for resource constrained systems. Other than the LUT approach, CDDT is significantly faster than the other methods evaluated. Ray marching is the next best, ranging from 1.28 to 2.25 times slower than PCDDT depending on access patterns and environmental factors. The comparison with the widely used Bresenham's Line algorithm is more stark, ranging from a factor of 5.39 to 14.8 speedup in our benchmarks.
 
 In future work we aim to further develop our approach to allow for incremental map updates without requiring a full reconstruction of the underlying acceleration data structure, a feature which currently only the slowest evaluated method supports.
 
