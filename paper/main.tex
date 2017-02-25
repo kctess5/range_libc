@@ -17,6 +17,7 @@
 % The following packages can be found on http:\\www.ctan.org
 \usepackage{graphicx}
 \usepackage{tabu}
+\usepackage{float}
 % \usepackage{graphics} % for pdf, bitmapped graphics files
 %\usepackage{epsfig} % for postscript graphics files
 %\usepackage{mathptmx} % assumes new font selection scheme installed
@@ -182,45 +183,51 @@ Pruning does also increase precomputation time rendering it incompatible with in
 
 \section{EXPERIMENTS}
 
-\begin{figure}[h]
-\img{synthetic_cropped.png}
-\caption{Occupancy grid map for the synthetic map example.}
-\label{violin:basement:grid}
-\end{figure}
-
 We have implemented the proposed algorithm in C++, as well as Bresenham’s Line, ray marching, and the LUT approach for comparison. Our source code is available for use and analysis [TODO add a link to github], and Python wrappers are also provided for easier usage. All benchmarks were performed on a desktop computer on a Intel Core i5-4590 CPU @ 3.30GHz with 16GB DDR3 ram @ 1333MHz, running Ubuntu 14.04.
+
+
+% \begin{figure}[h]
+% \img{grid_trial2_basement_cropped.png}
+% \caption{Violin plots demonstrating histogram of completion time over a large number of queries for each ray cast method. Basement map. X axis shows time in milliseconds, and Y axis shows the number of queries that completed after that amount of time.}
+% \label{violin:basement:grid}
+% \end{figure}
+
+\begin{figure}[ht]
+\img{basement_grid_random_cropped.png}
+% \begin{center}\includegraphics[width=248px,height=520px]{basement_benchmarks_cropped.png}\end{center}
+\caption{Violin plots demonstrating histogram of completion time over a large number of queries for each ray cast method. Basement map. X axis shows time in milliseconds, and Y axis shows the number of queries that completed after that amount of time.}
+\label{violin:basement:all}
+\end{figure}
 
 \subsection{Synthetic Benchmarks}
 
+% \begin{figure}[h]
+% \img{grid_trial2_basement_cropped.png}
+% \caption{Violin plots demonstrating histogram of completion time over a large number of queries for each ray cast method. Basement map. X axis shows time in milliseconds, and Y axis shows the number of queries that completed after that amount of time.}
+% \label{violin:basement:grid}
+% \end{figure}
 
-\begin{figure}[h]
-\img{grid_trial2_basement_cropped.png}
-\caption{Violin plots demonstrating histogram of completion time over a large number of queries for each ray cast method. Basement map. X axis shows time in milliseconds, and Y axis shows the number of queries that completed after that amount of time.}
-\label{violin:basement:grid}
-\end{figure}
+% \begin{figure}[h]
+% \img{grid_trial2_synthetic_cropped.png}
+% \caption{Violin plots demonstrating histogram of completion time over a large number of queries for each ray cast method. Synthetic map. X axis shows time in milliseconds, and Y axis shows the number of queries that completed after that amount of time.}
+% \label{violin:basement:grid}
+% \end{figure}
 
-\begin{figure}[h]
-\img{grid_trial2_synthetic_cropped.png}
-\caption{Violin plots demonstrating histogram of completion time over a large number of queries for each ray cast method. Synthetic map. X axis shows time in milliseconds, and Y axis shows the number of queries that completed after that amount of time.}
-\label{violin:basement:grid}
-\end{figure}
+% \begin{figure}[h]
+% \img{random_trial2_basement_cropped.png}
+% \caption{Violin plots for a large number of randomly sampled queries. Basement map. The random access pattern degrades the caching performance variably for each method.}
+% \label{violin:basement:random}
+% \end{figure}
 
-\begin{figure}[h]
-\img{random_trial2_basement_cropped.png}
-\caption{Violin plots for a large number of randomly sampled queries. Basement map. The random access pattern degrades the caching performance variably for each method.}
-\label{violin:basement:random}
-\end{figure}
-
-\begin{figure}[h]
-\img{random_trial2_synthetic_cropped.png}
-\caption{Violin plots for a large number of randomly sampled queries. Synthetic map. The random access pattern degrades the caching performance variably for each method.}
-\label{violin:basement:random}
-\end{figure}
+% \begin{figure}[h]
+% \img{random_trial2_synthetic_cropped.png}
+% \caption{Violin plots for a large number of randomly sampled queries. Synthetic map. The random access pattern degrades the caching performance variably for each method.}
+% \label{violin:basement:random}
+% \end{figure}
 
 We evaluate algorithm performance in two synthetic benchmarks, using two different maps. The so called Synthetic map was created with photoshop, whereas the basement map was created via a SLAM algorithm on the RACECAR platform [cite this?]. The first benchmark computes a ray cast for each point in a uniformly spaced grid over the three dimensional state space. The second benchmark performs a large number of ray casts for randomly generated states.
 
-
-\begin{figure}[h]
+\begin{figure}[ht]
 \begin{center}
 \begin{tabular}{ | m{8em} | m{2.3cm}| m{1.5cm} | } 
 \hline
@@ -240,7 +247,7 @@ We evaluate algorithm performance in two synthetic benchmarks, using two differe
 \label{table:basement:init}
 \end{figure}
 
-\begin{figure}[h]
+\begin{figure}[ht]
 \begin{center}
 \begin{tabular}{ | m{8em} | m{2.3cm}| m{1.5cm} | } 
 \hline
@@ -256,15 +263,11 @@ We evaluate algorithm performance in two synthetic benchmarks, using two differe
 \hline
 \end{tabular}
 \end{center}
-\caption{The construction time and memory footprint of each method for the Basement map.}
-\label{table:basement:init}
+\caption{The construction time and memory footprint of each method for the Synthetic map.}
+\label{table:synthetic:init}
 \end{figure}
 
 \subsection{Particle Filter Experiments}
-
-To simulate real world operating conditions, we have implemented a particle filter localization algorithm using a beam mode sensor model. We provide statistics about the ray cast performance of each algorithm while being used to compute the sensor model, as well as end to end statistics on the number of particles able to be maintained in real-time. While care was taken in implementing the particle filter, there are undoubtedly many optimizations which could further improve end-to-end performance. Thus, these benchmarks should not be considered an upper bound on performance and should be interpreted comparatively.
-
-Our sensor model is designed for the Hokuyo UST-10LX lidar scanner used aboard the RACECAR platform [cite this?], which features a 270° field of view. Since this FOV is in excess of 180° we exploit radial symmetry discussed in [radial symmetry section] to simultaneously ray cast in the theta and $\theta+180°$ direction when possible. As demonstrated in the below figure, this optimization reduces the number of data structure traversals required by a third as compared to the other methods evaluated, while still resolving the same number of ray casts. As is standard in such applications, we downsample the resolution of the laser scanner to reduce the number of ray casts per sensor model evaluations and to make the probability distribution over the state space less peaked.
 
 \begin{figure}[h]
 \img{particle_trial2_basement_cropped.png}
@@ -272,9 +275,13 @@ Our sensor model is designed for the Hokuyo UST-10LX lidar scanner used aboard t
 \label{violin:basement:random}
 \end{figure}
 
+To simulate real world operating conditions, we have implemented a particle filter localization algorithm using a beam mode sensor model. We provide statistics about the ray cast performance of each algorithm while being used to compute the sensor model, as well as end to end statistics on the number of particles able to be maintained in real-time. While care was taken in implementing the particle filter, there are undoubtedly many optimizations which could further improve end-to-end performance. Thus, these benchmarks should not be considered an upper bound on performance and should be interpreted comparatively.
+
+Our sensor model is designed for the Hokuyo UST-10LX lidar scanner used aboard the RACECAR platform [cite this?], which features a 270° field of view. Since this FOV is in excess of 180° we exploit radial symmetry discussed in [radial symmetry section] to simultaneously ray cast in the theta and $\theta+180°$ direction when possible. As demonstrated in the below figure, this optimization reduces the number of data structure traversals required by a third as compared to the other methods evaluated, while still resolving the same number of ray casts. As is standard in such applications, we downsample the resolution of the laser scanner to reduce the number of ray casts per sensor model evaluations and to make the probability distribution over the state space less peaked.
+
 \section{CONCLUSIONS}
 
-This work demonstrates that the proposed CDDT algorithm may be used in mobile robotics to accelerate sensor model computation when localizing in a two dimensional occupancy grid map. While the precomputed LUT approach is generally 1.1 to 1.7 times faster than the proposed algorithm, the memory footprint of the proposed data structure is significantly smaller which may be desirable for resource constrained systems. Other than the LUT approach, CDDT is significantly faster than the other methods evaluated. Ray marching is the next best, ranging from 1.28 to 2.25 times slower than PCDDT depending on access patterns and environmental factors. The comparison with the widely used Bresenham's Line algorithm is more stark, ranging from a factor of 5.39 to 14.8 speedup in our benchmarks.
+This work demonstrates that the proposed CDDT algorithm may be used in mobile robotics to accelerate sensor model computation when localizing in a two dimensional occupancy grid map. While the precomputed LUT approach is generally 1.1 to 1.7 times faster than the proposed algorithm, the memory footprint of the proposed data structure is significantly smaller which may be desirable for resource constrained systems. Other than the LUT approach, CDDT is significantly faster than the other methods evaluated. Ray marching is the next best, ranging from 1.28 to 2.25 times slower than PCDDT depending on access patterns and environmental factors. The comparison with the widely used Bresenham's Line algorithm is more stark, ranging from a factor of 5.39 to 14.8 in our benchmarks.
 
 In future work we aim to further develop our approach to allow for incremental map updates without requiring a full reconstruction of the underlying acceleration data structure, a feature which currently only the slowest evaluated method supports.
 
@@ -296,71 +303,20 @@ In future work we aim to further develop our approach to allow for incremental m
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \section*{APPENDIX}
 
-\begin{figure}[h]
-\begin{center}
-\begin{tabular}{ | m{1.05cm} | m{1.3cm}| m{1.6cm} | m{1.25cm} | m{1.25cm}|  } 
-\hline
-\multicolumn{5}{|c|}{Basement Map, Random Sampling Ray Cast} \\
-\hline
-Method & Mean & Median & IQR & Speedup \\
-\hline
-BL & 9.66e-07 & 1.05e-06 & 1.08e-06 & 1 \\
-RM & 2.12e-07 & 1.68e-07 & 1.64e-07 & 4.56 \\
-CDDT & 1.58e-07 & 1.49e-07 & 9.1e-08 & 6.13 \\
-PCDDT & 1.41e-07 & 1.32e-07 & 6.5e-08 & 6.83 \\
-LUT & 1.89e-07 & 1.7e-07 & 2.1e-08 & 5.10 \\
-\hline
-\end{tabular}
-\end{center}
-\caption{The construction time and memory footprint of each method for the Basement map.}
-\label{table:basement:init}
+\begin{figure}[h!]
+\img{synthetic_cropped.png}
+\caption{Synthetic map occupancy grid. 1024x1024}
+\label{violin:basement:grid}
 \end{figure}
 
-\begin{figure}[h]
+\begin{figure}[h!]
 \begin{center}
-\begin{tabular}{ | m{1.05cm} | m{1.3cm}| m{1.6cm} | m{1.25cm} | m{1.25cm}|  } 
+\newcolumntype{C}[1]{>{\centering\arraybackslash}m{#1}}
+\begin{tabular}{ | C{1.15cm} | C{1.25cm}| C{1.25cm} | C{1.25cm} | C{1.25cm}|  } 
 \hline
-\multicolumn{5}{|c|}{Basement Map, Grid Sampling Ray Cast} \\
-\hline
-Method & Mean & Median & IQR & Speedup \\
-\hline
-BL & 8.29e-07 & 9.24e-07 & 9.53e-07 & 1 \\
-RM & 1.65e-07 & 1.26e-07 & 1.34e-07 & 5.02 \\
-CDDT & 7.69e-08 & 7.2e-08 & 1.6e-08 & 10.78 \\
-PCDDT & 7.32e-08 & 7e-08 & 1.4e-08 & 11.33 \\
-LUT & 6.13e-08 & 4.3e-08 & 4.6e-08 & 13.53 \\
-\hline
-\end{tabular}
-\end{center}
-\caption{The construction time and memory footprint of each method for the Basement map.}
-\label{table:basement:init}
-\end{figure}
-
-\begin{figure}[h]
-\begin{center}
-\begin{tabular}{ | m{1.05cm} | m{1.3cm}| m{1.6cm} | m{1.25cm} | m{1.25cm}|  } 
-\hline
-\multicolumn{5}{|c|}{Basement Map, Particle Filter Ray Cast} \\
-\hline
-Method & Mean & Median & IQR & Speedup \\
-\hline
-BL & 3.89e-07 & 2.67e-07 & 2.31e-07 & 1 \\
-RM & 1.56e-07 & 1.18e-07 & 9.4e-08 & 2.49 \\
-CDDT & 7.67e-08 & 7.8e-08 & 5.7e-08 & 5.07 \\
-PCDDT & 7.22e-08 & 7.4e-08 & 5.4e-08 & 5.39 \\
-LUT & 4.35e-08 & 4.1e-08 & 5e-09 & 8.94 \\
-\hline
-\end{tabular}
-\end{center}
-\caption{The construction time and memory footprint of each method for the Basement map.}
-\label{table:basement:init}
-\end{figure}
-
-\begin{figure}[h]
-\begin{center}
-\begin{tabular}{ | m{1.05cm} | m{1.3cm}| m{1.6cm} | m{1.25cm} | m{1.25cm}|  } 
-\hline
-\multicolumn{5}{|c|}{Synthetic Map, Random Sampling Ray Cast} \\
+\multicolumn{5}{|c|}{\textbf{Synthetic Map Ray Cast Benchmarks}} \\
+\hline \hline
+\multicolumn{5}{|c|}{Random Sampling} \\
 \hline
 Method & Mean & Median & IQR & Speedup \\
 \hline
@@ -369,18 +325,8 @@ RM & 1.52e-07 & 1.25e-07 & 1.05e-07 & 7.81 \\
 CDDT & 1.24e-07 & 1.05e-07 & 5.3e-08 & 9.59 \\
 PCDDT & 1.19e-07 & 1.01e-07 & 5e-08 & 10.02 \\ 
 LUT & 1.82e-07 & 1.68e-07 & 1.4e-08 & 6.55 \\
-\hline
-\end{tabular}
-\end{center}
-\caption{The construction time and memory footprint of each method for the Basement map.}
-\label{table:basement:init}
-\end{figure}
-
-\begin{figure}[h]
-\begin{center}
-\begin{tabular}{ | m{1.05cm} | m{1.3cm}| m{1.6cm} | m{1.25cm} | m{1.25cm}|  } 
-\hline
-\multicolumn{5}{|c|}{Synthetic Map, Grid Sampling Ray Cast} \\
+\hline \hline
+\multicolumn{5}{|c|}{Grid Sampling} \\
 \hline
 Method & Mean & Median & IQR & Speedup \\
 \hline
@@ -391,10 +337,156 @@ PCDDT & 6.94e-08 & 6.8e-08 & 9e-09 & 14.80 \\
 LUT & 6.33e-08 & 4.2e-08 & 4.6e-08 & 16.21 \\
 \hline
 \end{tabular}
-\end{center}
-\caption{The construction time and memory footprint of each method for the Basement map.}
+\caption{All times listed in seconds, speedup relative to Bresenham's Line}
 \label{table:basement:init}
+\end{center}
 \end{figure}
+
+
+
+\begin{figure}[h!]
+\begin{center}
+\newcolumntype{C}[1]{>{\centering\arraybackslash}m{#1}}
+\begin{tabular}{ | C{1.15cm} | C{1.25cm}| C{1.25cm} | C{1.25cm} | C{1.25cm}|  } 
+\hline
+\multicolumn{5}{|c|}{\textbf{Basement Map Ray Cast Benchmarks}} \\
+\hline \hline
+Method & Mean & Median & IQR & Speedup \\
+\hline
+\multicolumn{5}{|c|}{Random Sampling} \\
+\hline
+BL & 9.66e-07 & 1.05e-06 & 1.08e-06 & 1 \\
+RM & 2.12e-07 & 1.68e-07 & 1.64e-07 & 4.56 \\
+CDDT & 1.58e-07 & 1.49e-07 & 9.1e-08 & 6.13 \\
+PCDDT & 1.41e-07 & 1.32e-07 & 6.5e-08 & 6.83 \\
+LUT & 1.89e-07 & 1.7e-07 & 2.1e-08 & 5.10 \\
+\hline \hline
+\multicolumn{5}{|c|}{Grid Sampling} \\
+\hline
+Method & Mean & Median & IQR & Speedup \\
+\hline
+BL & 8.29e-07 & 9.24e-07 & 9.53e-07 & 1 \\
+RM & 1.65e-07 & 1.26e-07 & 1.34e-07 & 5.02 \\
+CDDT & 7.69e-08 & 7.2e-08 & 1.6e-08 & 10.78 \\
+PCDDT & 7.32e-08 & 7e-08 & 1.4e-08 & 11.33 \\
+LUT & 6.13e-08 & 4.3e-08 & 4.6e-08 & 13.53 \\
+\hline \hline
+\multicolumn{5}{|c|}{Particle Filter} \\
+\hline
+Method & Mean & Median & IQR & Speedup \\
+\hline
+BL & 3.89e-07 & 2.67e-07 & 2.31e-07 & 1 \\
+RM & 1.56e-07 & 1.18e-07 & 9.4e-08 & 2.49 \\
+CDDT & 7.67e-08 & 7.8e-08 & 5.7e-08 & 5.07 \\
+PCDDT & 7.22e-08 & 7.4e-08 & 5.4e-08 & 5.39 \\
+LUT & 4.35e-08 & 4.1e-08 & 5e-09 & 8.94 \\
+\hline
+\end{tabular}
+
+\caption{All times listed in seconds, speedup relative to Bresenham's Line}
+\label{table:basement:init}
+\end{center}
+\end{figure}
+
+
+
+
+
+% \begin{figure}[h!]
+% \begin{center}
+% \begin{tabular}{ | m{1.05cm} | m{1.3cm}| m{1.6cm} | m{1.25cm} | m{1.25cm}|  } 
+% \hline
+% \multicolumn{5}{|c|}{Basement Map, Random Sampling Ray Cast} \\
+% \hline
+% Method & Mean & Median & IQR & Speedup \\
+% \hline
+% BL & 9.66e-07 & 1.05e-06 & 1.08e-06 & 1 \\
+% RM & 2.12e-07 & 1.68e-07 & 1.64e-07 & 4.56 \\
+% CDDT & 1.58e-07 & 1.49e-07 & 9.1e-08 & 6.13 \\
+% PCDDT & 1.41e-07 & 1.32e-07 & 6.5e-08 & 6.83 \\
+% LUT & 1.89e-07 & 1.7e-07 & 2.1e-08 & 5.10 \\
+% \hline
+% \end{tabular}
+% \end{center}
+% \caption{Statistics per ray cast query for random sampling synthetic map.}
+% \label{table:basement:init}
+% \end{figure}
+% \begin{figure}[h!]
+% \begin{center}
+% \begin{tabular}{ | m{1.05cm} | m{1.3cm}| m{1.6cm} | m{1.25cm} | m{1.25cm}|  } 
+% \hline
+% \multicolumn{5}{|c|}{Basement Map, Grid Sampling Ray Cast} \\
+% \hline
+% Method & Mean & Median & IQR & Speedup \\
+% \hline
+% BL & 8.29e-07 & 9.24e-07 & 9.53e-07 & 1 \\
+% RM & 1.65e-07 & 1.26e-07 & 1.34e-07 & 5.02 \\
+% CDDT & 7.69e-08 & 7.2e-08 & 1.6e-08 & 10.78 \\
+% PCDDT & 7.32e-08 & 7e-08 & 1.4e-08 & 11.33 \\
+% LUT & 6.13e-08 & 4.3e-08 & 4.6e-08 & 13.53 \\
+% \hline
+% \end{tabular}
+% \end{center}
+% \caption{Statistics per ray cast query for grid sampling synthetic map.}
+% \label{table:basement:init}
+% \end{figure}
+% \begin{figure}[h!]
+% \begin{center}
+% \begin{tabular}{ | m{1.05cm} | m{1.3cm}| m{1.6cm} | m{1.25cm} | m{1.15cm}|  } 
+% \hline
+% \multicolumn{5}{|c|}{Basement Map, Particle Filter Ray Cast} \\
+% \hline
+% Method & Mean & Median & IQR & Speedup \\
+% \hline
+% BL & 3.89e-07 & 2.67e-07 & 2.31e-07 & 1 \\
+% RM & 1.56e-07 & 1.18e-07 & 9.4e-08 & 2.49 \\
+% CDDT & 7.67e-08 & 7.8e-08 & 5.7e-08 & 5.07 \\
+% PCDDT & 7.22e-08 & 7.4e-08 & 5.4e-08 & 5.39 \\
+% LUT & 4.35e-08 & 4.1e-08 & 5e-09 & 8.94 \\
+% \hline
+% \end{tabular}
+% \end{center}
+% \caption{Statistics per ray cast query for random sampling basement map.}
+% \label{table:basement:init}
+% \end{figure}
+% \begin{figure}[h!]
+% \begin{center}
+% \begin{tabular}{ | m{1.05cm} | m{1.3cm}| m{1.6cm} | m{1.25cm} | m{1.15cm}|  } 
+% \hline
+% \multicolumn{5}{|c|}{Synthetic Map, Random Sampling Ray Cast} \\
+% \hline
+% Method & Mean & Median & IQR & Speedup \\
+% \hline
+% BL & 1.19e-06 & 1.41e-06 & 7.71e-07 & 1 \\
+% RM & 1.52e-07 & 1.25e-07 & 1.05e-07 & 7.81 \\
+% CDDT & 1.24e-07 & 1.05e-07 & 5.3e-08 & 9.59 \\
+% PCDDT & 1.19e-07 & 1.01e-07 & 5e-08 & 10.02 \\ 
+% LUT & 1.82e-07 & 1.68e-07 & 1.4e-08 & 6.55 \\
+% \hline
+% \end{tabular}
+% \end{center}
+% \caption{The construction time and memory footprint of each method for the Basement map.}
+% \label{table:basement:init}
+% \end{figure}
+% \begin{figure}[h!]
+% \begin{center}
+% \begin{tabular}{ | m{1.05cm} | m{1.3cm}| m{1.6cm} | m{1.25cm} | m{1.15cm}|  } 
+% \hline
+% \multicolumn{5}{|c|}{Synthetic Map, Grid Sampling Ray Cast} \\
+% \hline
+% Method & Mean & Median & IQR & Speedup \\
+% \hline
+% BL & 1.03e-06 & 1.20e-06 & 6.79e-07 & 1 \\ 
+% RM & 1.27e-07 & 1.03e-07 & 1.06e-07 & 8.06 \\
+% CDDT & 7.02e-08 & 6.8e-08 & 1e-08 & 14.63 \\
+% PCDDT & 6.94e-08 & 6.8e-08 & 9e-09 & 14.80 \\
+% LUT & 6.33e-08 & 4.2e-08 & 4.6e-08 & 16.21 \\
+% \hline
+% \end{tabular}
+% \end{center}
+% \caption{The construction time and memory footprint of each method for the Basement map.}
+% \label{table:basement:init}
+% \end{figure}
 
 \begin{thebibliography}{99}
 
@@ -407,4 +499,11 @@ LUT & 6.33e-08 & 4.2e-08 & 4.6e-08 & 16.21 \\
 \bibitem{sphere:source} Pharr, M., and R. Fernando. GPU Gems 2: Programming Techniques for High-Performance Graphics and General-Purpose Computation: Addison Wesley Professional. 2005. http://http.developer.nvidia.com/GPUGems2/gpugems2\_chapter08.html
 
 \end{thebibliography}
+
+
+
+
+
+
+
 \end{document}
