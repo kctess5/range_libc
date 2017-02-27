@@ -35,11 +35,15 @@ DEFINE_string(cddt_save_path, "",
 DEFINE_string(log_path, "",
 	"Where to store high fidelity logs, does not save if not specified.");
 
-DEFINE_string(which_benchmark, "random",
+DEFINE_string(which_benchmark, "",
 	"Which benchmark to run, one of:\n  random\n  grid\n");
 
+DEFINE_string(query, "",
+	"Query point x,y,theta to ray cast from. example: --query=0,0,3.14");
+
+DEFINE_string(trace_path, "", "Path to output trace map of memory access pattern. Works for Bresenham's Line or Ray Marching.");
+
 #define MAX_DISTANCE 500
-#define NUM_RAYS 500
 #define THETA_DISC 108
 #define MB (1024.0*1024.0)
 // #ifdef BASEPATH
@@ -50,7 +54,7 @@ DEFINE_string(which_benchmark, "random",
 #define GRID_STEP 10
 #define GRID_RAYS 40
 #define GRID_SAMPLES 1
-#define RANDOM_SAMPLES 200000
+#define RANDOM_SAMPLES 100
 
 using namespace ranges;
 using namespace benchmark;
@@ -106,6 +110,15 @@ int main(int argc, char *argv[])
 
 	if (map.error()) return 1;
 
+	float query_y, query_x, query_t;
+	if (!FLAGS_trace_path.empty()) {
+		std::vector<std::string> query = utils::split(FLAGS_query, ',');
+		query_x = std::stof(query[0]);
+		query_y = std::stof(query[1]);
+		query_t = std::stof(query[2]);
+	}
+	
+
 	std::vector<std::string> methods = utils::split(FLAGS_method, ',');
 
 	if (utils::has("BresenhamsLine", methods) || utils::has("bl", methods)) {
@@ -129,6 +142,21 @@ int main(int argc, char *argv[])
 			mark.grid_sample(GRID_STEP, GRID_RAYS, GRID_SAMPLES);
 		else if (FLAGS_which_benchmark == "random")
 			mark.random_sample(RANDOM_SAMPLES);
+
+		if (!FLAGS_query.empty()) {
+			std::cout << "...querying pose:" << FLAGS_query << std::endl;
+			std::cout << "...   range: " << bl.calc_range(query_x,query_y,query_t) << std::endl;
+		}
+
+		if (!FLAGS_trace_path.empty()) {
+			#if _MAKE_TRACE_MAP == 1
+			std::cout << "...saving trace to:" << FLAGS_trace_path << std::endl;
+			bl.getMap()->saveTrace(FLAGS_trace_path);
+			// mark.getMap()->saveTrace(FLAGS_trace_path);
+			#else
+			std::cout << "...CANNOT SAVE TRACE, first #define _MAKE_TRACE_MAP 1 to generate trace." << std::endl;
+			#endif
+		}
 		
 		if (DO_LOG) {
 			save_log(tlog, FLAGS_log_path+"/bl.csv");
@@ -153,6 +181,23 @@ int main(int argc, char *argv[])
 			mark.grid_sample(GRID_STEP, GRID_RAYS, GRID_SAMPLES);
 		else if (FLAGS_which_benchmark == "random")
 			mark.random_sample(RANDOM_SAMPLES);
+
+		if (!FLAGS_query.empty()) {
+			std::cout << "...querying pose:" << FLAGS_query << std::endl;
+			std::cout << "...   range: " << rm.calc_range(query_x,query_y,query_t) << std::endl;
+		}
+
+		if (!FLAGS_trace_path.empty()) {
+			#if _MAKE_TRACE_MAP == 1
+			std::cout << "...saving trace to:" << FLAGS_trace_path << std::endl;
+			rm.getMap()->saveTrace(FLAGS_trace_path);
+			// mark.getMap()->saveTrace(FLAGS_trace_path);
+			#else
+			std::cout << "...CANNOT SAVE TRACE, first #define _MAKE_TRACE_MAP 1 to generate trace." << std::endl;
+			#endif
+		}
+
+
 		if (DO_LOG) {
 			save_log(tlog, FLAGS_log_path+"/rm.csv");
 		}

@@ -22,13 +22,28 @@
 %\usepackage{epsfig} % for postscript graphics files
 %\usepackage{mathptmx} % assumes new font selection scheme installed
 %\usepackage{times} % assumes new font selection scheme installed
-%\usepackage{amsmath} % assumes amsmath package installed
+\usepackage{amsmath} % assumes amsmath package installed
 %\usepackage{amssymb}  % assumes amsmath package installed
-
+\usepackage{tikz}
+\usetikzlibrary{matrix}
+\usetikzlibrary{shapes.geometric, arrows}
 
 \newcommand{\img}[1]{\begin{center}\includegraphics[width=\columnwidth]{{#1}}\end{center}}
 
 \newcommand{\imgFrame}[1]{\begin{center}\frame{\includegraphics[width=\columnwidth]{{#1}}}\end{center}}
+
+
+\newcommand{\gridScale}{1.25}
+
+%: Margin note commands
+\usepackage[usenames,dvipsnames]{xcolor}
+\setlength{\marginparwidth}{0.5in}
+\let\oldmarginpar\marginpar
+\renewcommand\marginpar[1]{\-\oldmarginpar[\raggedleft\footnotesize #1]%
+{\raggedright\footnotesize #1}}
+\newcommand{\skcomment}[2]{{\color{red}#1} \marginpar{\color{blue}\tiny #2 (SK)}}
+
+
 
 % \begin{center}\frame{\includegraphics[width=\columnwidth]{synthetic.png}}\end{center}
 
@@ -39,11 +54,10 @@ Compressed Directional Distance Transform for Fast 2D Ray Casting
 
 \author{Corey H. Walsh$^{1}$ and Sertac Karaman$^{2}$% <-this % stops a space
 % \thanks{*This work was not supported by any organization}% <-this % stops a space
-\thanks{$^{1}$Corey H. Walsh is with the Department of Computer Science and Engineering, 
-Albert Author is with Faculty of Electrical Engineering, Mathematics and Computer Science, Massachusetts Institute of Technology,
+\thanks{$^{1}$Corey H. Walsh is with the Department of Computer Science and Engineering, Massachusetts Institute of Technology,
         Cambridge, MA 02139, USA
         {\tt\small chwalsh@mit.edu}}%
-\thanks{$^{2}$Sertac Karaman is with Faculty of Computer Science and Engineering, Massachusetts Institute of Technology,
+\thanks{$^{2}$Sertac Karaman is with the Laboratory for Information and Decision Systems, Massachusetts Institute of Technology,
         Cambridge, MA 02139, USA
         {\tt\small sertac@mit.edu}}%
 }
@@ -54,6 +68,8 @@ Albert Author is with Faculty of Electrical Engineering, Mathematics and Compute
 \thispagestyle{empty}
 \pagestyle{empty}
 
+
+\skcomment{}{I would consider putting the word ``localization'' in the title.}
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \begin{abstract}
@@ -66,25 +82,25 @@ Lorem Ipsum is simply dummy text of the printing and typesetting industry. Lorem
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-\section{INTRODUCTION}
+\section{Introduction}
 
-The ray cast operation is an important sub-problem for robot localization \cite{localization} using distance sensors to detect the environment. In particle filter localization, particles are re-weighted according to a Bayesian update equation which relies on ray casting to determine the ground truth distance between the hypothesis pose and obstacles in a map. Effective particle filters often maintain thousands of particles, each of which must be reweighted tens of times per second, and each re-weighting may require tens of ray casts. As a result, millions of ray cast operations may be resolved per second, posing a significant computational challenge for resources constrained systems.
+Determining a robot's location and orientation in a known environment, also known as localization, is an important and challenging problem in the field of robotics. Particle filters are a popular class of Monte Carlo algorithms used to track the pose of mobile robots by iteratively refining a set of pose hypotheses called particles. After determining an initial set of particles, the particle filter updates the position and orientation of each particle by applying a movement model based on available odometry data. Next, the belief in each particle is updated by comparing sensor readings to a map of the environment. Finally, the particles are resampled according to the belief distribution and algorithm repeats.
 
-To combat this challenge, Fox et al. \cite{localization} suggest the use of a large three-dimensional lookup table (LUT) to store expected ranges for each discrete $(x,y,\theta)$ state. While this is simple to implement and does result in large speed improvements as compared to ray casting, it can be prohibitively memory intensive for large maps and/or resource constrained systems. We propose an analogous data structure called a Compressed Directional Distance Transform (CDDT) which requires significantly less memory and precomputation time while still allowing near constant time ray casting queries.
+While particle filters provide a robust and general framework for solving the localization problem, they can be computationally expensive due to both the number of particles which must be maintained and the evaluation of the sensor model. In robots with range sensors such as LiDAR or Sonar, ray casting is frequently used to compare sensor readings with the ground truth distance between the hypothesis pose and obstacles in a map. Ray casting itself is a complex operation, and reweighting any single particle may require tens of ray casts. Many effective particle filters maintain thousands of particles, updating each particle tens of times per second. As a result, millions of ray cast operations may be resolved per second, posing a significant computational challenge for resource constrained systems.
 
-Many robotic applications require three dimensional maps, however that is considered outside the scope of this work since many data structures exist for accelerating 3D ray casting, such as the bounded volume hierarchy and related variants. The five dimensional table required to precompute expected ranges for a discrete state space $(x,y,z,\theta,\phi)$ would be prohibitively expensive to both compute and store, so 3D acceleration data structures are exclusively used when 3D ray casting is required. Though our approach does extend to higher dimensionality and would be smaller than the analogous five dimensional table, it would still be prohibitively expensive in greater than two dimensions, thus we do not consider it here.
+Several well known algorithms exist for ray casting in two dimensional spaces such as Bresenham's Line algorithm \cite{bresenham} and ray marching \cite{raymarching}. Both algorithms work by iteratively checking points in the map starting at the query point and moving in the ray direction until an obstacle is discovered. This process may require hundreds of memory reads per ray cast depending on the distance to the nearest obstacle, and does not provide constant time performance. 
 
-\section{RELATED WORK}
+To combat the computational challenges of ray casting while localizing in a two-dimensional map, Thrun et al. \cite{localization} suggest the use of a large three-dimensional lookup table (LUT) to store expected ranges for each discrete $(x,y,\theta)$ state. While this is simple to implement and does result in large speed improvements as compared to ray casting, it can be prohibitively memory intensive for large maps and/or resource constrained systems. In a 2000 by 2000 occupancy map, storing ranges for 200 discrete directions would require over 1.5GB. While this memory requirement may be acceptable in many cases, it scales with the square of map size - a 4000 by 4000 map would require over 6GB for the same angular discretization.
 
-Several widely used algorithms exist for ray casting in a two dimensional space. Due to varied handling of edge cases and ambiguities in the problem of determining distance between any point and the nearest obstacle in a particular direction, most 2D ray casting algorithms do not provide exactly consistent results for every query. However, on average error between results from each of the methods discussed is small.
+We propose an analogous data structure to the three-dimensional LUT called a Compressed Directional Distance Transform (CDDT) which requires significantly less memory and precomputation time while still allowing near constant time ray casting queries. The contributions of this work are the following. Firstly, we develop a problem formulation and provide details of our method. Secondly, we implement the proposed algorithm and compare its performance to alternate two-dimensional ray casting methods. Finally, we discuss potential extensions to the CDDT algorithm which could be the basis of future research. We observe two orders of magnitude improvement in memory requirements, with little sacrifice in computation time, when compared to the lookup table methods. Additionally, we observe a large speedup when compared to the other ray casting methods considered with similar memory requirements.
 
-\subsection{Bresenham's Line}
+\section{Related Work}
 
-Bresenham's line algorithm \cite{bresenham} incrementally determines the set of pixels that approximate the trajectory of query ray starting from the query point $(x,y)$ and progressing in the $\theta$ direction. The algorithm terminates once the nearest occupied pixel is discovered, and the euclidean distance between that occupied pixel and the query $(x,y)$ is reported. This algorithm is widely implemented in particle filters due to its simplicity and ability to operate on a dynamic map. The primary disadvantage is that it is slow, potentially requiring hundreds of memory accesses for a single ray cast. While actual performance is highly environment dependent, Bresenham’s Line algorithm is linear in map size in the worst case.
+Due to varied handling of edge cases and ambiguities in the problem of determining distance between any point and the nearest obstacle in a particular direction, most 2D ray casting algorithms do not provide exactly consistent results for every query. However, on average error between results from each of the methods discussed is small.
 
-\subsection{Ray Marching Distance Transforms}
+Bresenham's line algorithm \cite{bresenham} incrementally determines the set of pixels that approximate the trajectory of query ray starting from the query point $(x,y)$ and progressing in the $\theta$ direction one pixel at a time. The algorithm terminates once the nearest occupied pixel is discovered, and the euclidean distance between that occupied pixel and the query $(x,y)$ is reported. This algorithm is widely implemented in particle filters due to its simplicity and ability to operate on a dynamic map. The primary disadvantage is that it is slow, potentially requiring hundreds of memory accesses for a single ray cast. While actual performance is highly environment dependent, Bresenham’s Line algorithm is linear in map size in the worst case.
 
-Similar to Bresenham's Line algorithm, ray marching \cite{raymarching} checks points along the line radiating outwards from the query point until an obstacle is encountered. The primary difference is that ray marching makes larger steps along the query ray, avoiding unnecessary memory reads. Beginning at the query point $(x,y)$ the ray marching algorithm proceeds in the theta direction, stepping along the line by the minimum distance between each query point and the nearest obstacle. The algorithm terminates when the query point falls on an obstacle in the map. A precomputed euclidean distance transform of the map provides the distance between each query point and the nearest obstacle in any direction.
+Similar to Bresenham's Line algorithm, ray marching \cite{raymarching} checks points along the line radiating outwards from the query point until an obstacle is encountered. The primary difference is that ray marching makes larger steps along the query ray, thereby avoiding unnecessary memory reads. Beginning at the query point $(x,y)$ the ray marching algorithm proceeds in the theta direction, stepping along the line by the minimum distance between each query point and the nearest obstacle. The algorithm terminates when the query point coincides with an obstacle in the map. A precomputed euclidean distance transform of the occupancy map provides the distance between each query point and the nearest obstacle in any direction.
 
 \begin{figure}[h]
 \img{spheretrace.jpg}
@@ -92,53 +108,84 @@ Similar to Bresenham's Line algorithm, ray marching \cite{raymarching} checks po
 \label{spheres}
 \end{figure}
 
-Ray marching is on average much faster than Bresenham’s line, but edge cases exist in which the performance is equivalent. For example, a query ray which travels closely parallel to a wall will make small steps between each query point for the whole length of the ray. As a result, the performance of ray marching has a long tail distribution which can be problematic for near real time algorithms. Though highly scene dependent, on average ray marching runtime is roughly logarithmic in distance between obstacles, though in the worst case it is linear in map size.
+Ray marching is on average much faster than Bresenham’s line, but edge cases exist in which the performance is nearly equivalent. As noted in \cite{acceleratedraymarching} the traversal speed of rays rapidly decreases as sampled positions approach obstacles. For this reason, rays which travel parallel to walls progress very slowly as compared to those passing through open areas. Thus the performance of ray marching exhibits a long tail distribution as seen in (Fig. \ref{violin:basement:all}, \ref{violin:basement:particle}) which negatively impacts average runtime as compared to the median, and can be problematic for near real time algorithms.
 
-% \begin{figure}[thpb]
-%       \centering
-%       \framebox{\parbox{3in}{We suggest that you use a text box to insert a graphic (which is ideally a 300 dpi TIFF or EPS file, with all fonts embedded) because, in an document, this method is somewhat more stable than directly inserting a picture.
-% }}
-%       %\includegraphics[scale=1.0]{figurefile}
-%       \caption{Inductance of oscillation winding on amorphous
-%       magnetic core versus DC bias magnetic field}
-%       \label{figurelabel}
-%   \end{figure}
+As previously described, a common acceleration technique for two dimensional ray casting is to precompute the ray distances for every state in a discrete grid and store the results in a three dimensional LUT. Any ray casting technique may be used to compute the table. In the authors’ implementation ray casting is used to populate the LUT since it has low initialization time and is significantly faster than Bresenham’s Line. Theoretically this approach has constant query runtime, though actual performance is dependent on access patterns as CPU caching effects are significant in practice.
 
+State space discretization implies approximate results, since intermediate states must be rounded onto the discrete grid. While the effect of rounding query position, it can be significant for $\theta$. As the ray moves further away from the query point along the theta direction, angular discretization error accumulates. For queries $(x,y,\theta)$ discretized into $(x_d,y_d,\theta_d)$, the distance between the end of the ray $(x_d,y_d,Θ_d)$ and its projection onto the line implied by $(x,y,\theta)$ becomes large as the length of the ray increases. Although the error induced by discretization may be unacceptable for computer graphics applications, it is generally acceptable for probabilistic algorithms such as the particle filter since error is expected and directly modeled. 
 
-\subsection{Lookup Table}
+Rather than simply rounding to the nearest grid state, one method to improve accuracy of queries which lie between discrete states is to query the neighboring states and interpolate between them. Since we are evaluating the performance of these methods for use in a particle filter, we do not perform interpolation since the increased computation reduces the number of particles that may be maintained in real time, and therefore any increase in accuracy with respect to the stored map is effectively negated.
 
-As previously described, a common acceleration technique for two dimensional ray casting is to simply precompute the ray distances for every state in a discrete grid and store the results in a three dimensional LUT. Any ray casting technique may be used to compute the table. In the authors’ implementation ray casting is used to populate the LUT since it has low initialization time and is significantly faster than Bresenham’s Line. Theoretically this approach has constant query runtime, though actual performance is dependent on access patterns as CPU caching effects are significant in practice.
+\section{Problem Formulation and Notation}
 
-State space discretization implies approximate results, since intermediate states must be rounded onto the discrete grid. While the effect is small for x and y, it can be significant for theta. As the ray moves further away from the query point along the theta direction, angular discretization error accumulates. For queries $(x,y,\theta)$ discretized into $(x_d,y_d,\theta_d)$, the distance between the end of the ray $(x_d,y_d,Θ_d)$ and its projection onto the line implied by $(x,y,\theta)$ becomes large as the length of the ray increases. Although the error induced by discretization may be unacceptable for computer graphics applications, it is generally acceptable for probabilistic algorithms such as the recursive Bayes filter since error is expected and directly modeled. 
+We define the problem of ray casting in occupancy grids as follows. We assume a known occupancy grid map in which occupied cells have value one and unoccupied cells have value zero. Given a query pose $(x,y,\theta)_{query}$ in map space, the ray cast operation finds the nearest occupied pixel $(x,y)_{collide}$ which lies on the ray starting at the position $(x,y)_{query}$ pointing in the $\theta_{query}$ direction. The ray cast operation returns the euclidean distance $d_{ray}$ between $(x,y)_{query}$ and $(x,y)_{collide}$.
 
-One method to improve accuracy of queries which fall between discrete states is to ray cast the neighboring discrete states and interpolate between them, rather than simply rounding to the nearest discrete state. Since we are evaluating the performance of these methods for use in a particle filter, we do not perform interpolation since the increased computation reduces the number of particles that may be maintained in real time and therefore any increase in accuracy with respect to the stored map is effectively negated.
+$$ d_{ray} = \left\Vert\begin{pmatrix}
+           x \\
+           y 
+         \end{pmatrix}_{query} - 
+         \begin{pmatrix}
+           x \\
+           y
+         \end{pmatrix}_{collide}\right\Vert_2
+$$
 
-\section{APPROACH}
-
-Although the three dimensional table used to store precomputed ray cast solutions for a discrete state space is inherently large, it is highly compressible. This is most apparent in the cardinal directions, in which adjacent values along a particular dimension of the table increase by exactly one unit of distance for unobstructed positions. Our data structure is designed to compress this redundancy while still allowing for fast queries in near constant time. We accomplish this though through what we refer to as a compressed directional distance transform (CDDT) described here.
-
-\begin{figure}[h]
-\img{basement_bw_cropped.png}
-\caption{Occupancy grid map of the Stata basement loop. 1200x1200}
-\label{stata}
-\end{figure}
-
-The euclidean distance transform (EDT) of an occupancy grid map stores the distance to the nearest obstacle in any direction for each point $(x,y)$ in the map. In contrast, a directional distance transform (DDT) stores the distance to the nearest obstacle in a particular direction for each point $(x,y)$ in the map. The key difference between a single Θ slice of the LUT and a directional distance transform is the way in which it is computed. To compute the LUT slice, ray casting is performed in the $\theta_d$ direction from every $(x_d,y_d)$ in the map using another algorithm such as Bresenham’s line. In contrast, to compute the DDT, the obstacles in the map are rotated about the center of the map by $-\theta_d$ and the values of each column in the DDT may be directly computed as a sawtooth function which goes to zero whenever an obstacle is encountered in that column. Thus, each column in the DDT may be characterized as a sawtooth function with uneven periodicity. While it is true that the rotation of the occupancy grid introduces small errors as compared to ray casting for each cell, as previously discussed small errors do not significantly impact particle filter localization performance due to the use of a probabilistic error model. In practice, errors induced by map rotation are dominated by those inherently present in distance sensors.
+We refer to $(x,y,\theta)_{query}$ as the query pose, and $(x,y)_{query}$ as the query point. Additionally, denote the discretized query pose as $\lfloor(x,y,\theta)_{query}\rceil$. A $\theta$ slice through the LUT refers to all table entries for that particular $\lfloor\theta\rceil$.
 
 \begin{figure}[h]
-\img{slice0_cddt_basement.png}
-\caption{A single slice of the DDT generated from the CDDT data structure for $\theta=0$. The value of each pixel represents the distance to the nearest obstacle in the upwards direction with respect to the image above. Each column may be thought of as a sawtooth wave, and the points where the wave is zero are projected into the CDDT bin for that column for later indexing. The blue plot indicates the number of zero points projected into each CDDT bin. The compression factor of 267 is computed as two times the size of the corresponding LUT slice divided by the size of this slice in the CDDT. The factor of two is due to the use of rotational symmetry to reduce the number of slices maintained in the CDDT with respect to the LUT.}
-\label{cddt:slice0}
+\img{coord_system.png}
+\caption{Occupancy grid map coordinate system}
+\label{coordinate_system}
 \end{figure}
+
+\section{The Compressed Directional Distance Transform Algorithm}
+
+Although the three dimensional table used to store precomputed ray cast solutions for a discrete state space is inherently large, it is highly compressible. This is most apparent in the cardinal directions, in which adjacent values along a particular dimension of the table increase by exactly one unit of distance for unobstructed positions as in Fig. \ref{cardinal_example}. Our data structure is designed to compress this redundancy while still allowing for fast queries in near constant time. We accomplish this though through what we refer to as a Compressed Directional Distance Transform (CDDT) described here.
 
 \begin{figure}[h]
-\img{slice41_cddt_basement.png}
-\caption{Another slice of the DDT generated from the CDDT data structure for $\theta=2.385$.}
-\label{cddt:slice41}
+\begin{center}
+\begin{tikzpicture}
+\fill[black,scale=\gridScale] (0.5,0.5) rectangle (1,1);
+\fill[black,scale=\gridScale] (-0.5,0) rectangle (0,0.5);
+\fill[black,scale=\gridScale] (0,-0.5) rectangle (0.5,0);
+\fill[black,scale=\gridScale] (0.5,-1) rectangle (1,-0.5);
+\draw[scale=\gridScale,step=0.5cm,color=white] (-1,-1.1) grid (1,1.1);
+\draw[scale=\gridScale,step=0.5cm,color=gray] (-1,-1) grid (1,1);
+\end{tikzpicture}
+\begin{tikzpicture}
+\draw[scale=\gridScale,step=0.5cm,color=white] (-1,-1.1) grid (1,1.1);
+\draw[scale=\gridScale,step=0.5cm,color=gray] (-1,-1) grid (1,1);
+\matrix[matrix of nodes,nodes={inner sep=0pt,text width=.5cm,align=center,minimum height=0.45cm, scale=\gridScale}]{
+3 & 2 & 1 & 0 \\
+1 & 0 & - & - \\
+2 & 1 & 0 & - \\    
+3 & 2 & 1 & 0\\};
+\end{tikzpicture}
+\end{center}
+\caption{Occupancy grid (left) and associated LUT for $\theta=0$ (right).}
+\label{cardinal_example}
 \end{figure}
 
-The conversion from a DDT to a CDDT is performed by converting the sawtooth response of each column into a set of points in which the sawtooth wave goes to zero. This conversion is lossless in the sense that each element of the table may be recovered as a function of the nearest zero point in a particular direction. If the set of zero points is sorted, then the magnitude of the saw tooth wave at any point in the original DDT may be quickly discovered by performing binary search for the nearest zero point in that column and finding the distance between the query point and that zero point. This losslessness and fast indexing allows for ray cast queries to be quickly resolved without storing the entire DDT, but rather by storing the sorted lists of zero points.
-For sake of efficiency, the full DDT need not be computed, but rather the CDDT may be built directly by projecting each obstacle into the coordinate space of each theta slice and storing a list of y-coordinates for each discrete x-coordinate. Once all scene geometry is projected into the table, each list of zero points is sorted to facilitate indexing.
+The euclidean distance transform of an occupancy grid map stores the distance to the nearest obstacle in any direction $\theta$ for each possible $\lfloor(x,y)\rceil$ in the map. In contrast, a directional distance transform (DDT) stores the distance to the nearest obstacle in a particular direction $\lfloor\theta\rceil$ for every $\lfloor(x,y)\rceil$. The key difference between a single $\theta$ slice of the LUT and a directional distance transform for the same $\theta$ is the way in which it is computed and indexed. To compute the LUT slice, ray casting is performed in the $\theta$ direction for every $\lfloor(x,y)\rceil$. At runtime, each $(x,y)_{query}$ is discretized to $\lfloor(x,y)_{query}\rceil$ and the LUT slice is directly indexed.
+
+In contrast, to compute the DDT, the obstacles in the map are rotated about the origin by $-\lfloor\theta\rceil$ and ray casting is implicitly performed in the $\theta=0$ direction to populate the table. Then, to index the table for a query $(x,y,\theta)_{query}$ one discretizes to $\lfloor(x,y,\theta)_{query}\rceil$, rotates $\lfloor(x,y)_{query}\rceil$ about the origin, and uses the rotated coordinates $\lfloor(x,y,\theta)_{query}\rceil_{rot}$ to index into the DDT. Thus, the same operation is computed in both the DDT and the LUT, but while one changes the ray cast direction to populate the LUT, one rotates scene geometry and ray casts in a constant direction to populate the DDT. While it is true that the rotation of the scene geometry introduces small errors as compared to ray casting for each cell, as previously discussed small errors do not significantly impact particle filter localization performance due to the use of a probabilistic error model and are dominated by errors inherently present in distance sensors. 
+
+The distinction between the LUT slice and the DDT may be subtle, but it has an important effect. Since ray casting is always performed in the $\theta=0$ direction to populate the DDT, all values in the same row of the DDT either increase by one unit with respect to their neighbor in the $\theta=0$ direction or go to zero. Thus each row of the DDT may be characterized as a sawtooth function where the zero points correspond to obstacles in the map. This characterization as a sawtooth function provides a natural method of lossless compression: keep the zero points and discard the rest.
+
+The conversion from a DDT to a CDDT slice is performed by storing the $x$ coordinate of each zero point in the coordinate space of the DDT for every discrete row. At query time, the sawtooth function (which is the distance to the nearest obstacle in the query direction) encoded in the DDT may be quickly recovered by performing binary search for nearest zero point in the correct row of the CDDT slice. We refer to the list of zero points for a single row as a CDDT bin. Similar to the LUT, the full CDDT is defined as every CDDT slice for all discrete values of $\theta$.
+
+For performance, it is not necessary to compute the full DDT, but rather the CDDT may be directly constructed by projecting each obstacle into the coordinate space of the DDT for every $\lfloor\theta\rceil$ and sorting its $x$ coordinate in the CDDT bin corresponding to its $y$ coordinate and rotation. After all geometry has been projected into the CDDT, each bin is sorted to facilitate later indexing. Not only does the direct construction of the CDDT greatly reduce the amount of memory required to store the LUT, it also reduces data structure precomputation time since ray casting is not necessary.
+
+[TODO add an example of scene rotation, saw tooth wave, and zero point projection]
+
+\subsection{CDDT Construction Algorithm}
+
+\subsection{CDDT Query Algorithm}
+
+
+{\color{red}DONE WITH SECOND EDITING PASS UP TO THIS POINT}
+
+
 
 Once the CDDT is constructed, querying the data structure to resolve ray casts involves
 
@@ -151,7 +198,10 @@ Once the CDDT is constructed, querying the data structure to resolve ray casts i
 Binary search is theoretically optimal for finding zero points near to query states, in our implementation we conditionally use linear search when the number of zero points is below a certain constant (we use 64) as it has a superior memory access pattern in such cases.
 While conceptually simple, implementing the CDDT data structure construction and traversal routines requires careful consideration in order to capture all edge cases and to minimize unnecessary computation. In this sense, it is more complex to implement than the alternatives considered, however there are many opportunities for optimization which yield real-world speed up. To ease this burden, we provide our implementation as well as Python wrappers with an Apache 2.0 license.
 
-\subsection{Rotational Symmetry}
+
+\skcomment{}{You can put all the text after this point into one subsection, which you can call ``Further optimizations'' or something like that.}
+
+\subsection{Further Optimizations}
 
 A side effect of extracting the zero points from each column of the DDT is the introduction of rotational symmetry. For any given theta, the zero points accumulated by projecting scene geometry into the requisite coordinate space are mirror images of those accumulated by projecting scene geometry into the theta+pi direction. Therefore, one need only compute the CDDT for the range of discrete thetas from $[0,\pi)$ and the DDT for the range $[0,2\pi)$ may be inferred, resulting in factor of two further reduction in memory usage.
 
@@ -163,13 +213,13 @@ While the authors did not implement the necessary changes, we conjecture that th
 
 To allow incremental update of the CDDT, the sorted vector data structure used in our implementation should be replaced with an alternative which allows for $O(logn)$ insert and delete, such as a randomized skip list. To aid in node deletion, pointers could be maintained from each grid element to the associated leaf node in the randomized skip lists with a constant factor increase in memory usage. 
 
-In this case, the cost of inserting or deleting an occupied grid cell would be $O(theta\_discretization*\log(number of lut bin elements))$. The number of elements in each lut bin tends to be small and is bounded, so this becomes $O(theta\_discretization)$ which is likely not prohibitive for real-time performance.
+In this case, the cost of inserting or deleting an occupied grid cell would be \skcomment{$O(theta\_discretization*\log(number of lut bin elements))$.}{I think this is your plan already, but just to note: Please make sure to use symbols for these and introduce what the symbols mean. } The number of elements in each lut bin tends to be small and is bounded, so this becomes $O(theta\_discretization)$ which is likely not prohibitive for real-time performance.
 
 Skip list traversal is likely to be less efficient than binary search on sorted vectors due to worse cache characteristics. However, the authors expect it to still be significantly faster than performing Bresenham’s line, and therefore recommend that this modification be the subject of future research.
 
 \subsection{Pruning}
 
-By removing entries in the CDDT which can never possibly result in a ray collision, it is possible to further reduce the memory footprint of the data structure. Consider a 3x3 block of obstacles in an otherwise empty map. The center obstacle will never be the nearest neighbor in any ray casting query, because any such query would first intersect with one of the 8 surrounding obstacles. To exploit this, one can take the morphological edge map of the occupancy grid map prior to CDDT generation without loss of generality. This can result in significant memory usage and data structure construction time reductions in dense maps where the number of obstacles adjacent to empty cells is small compared to the total number of obstacles. Prior to performing ray casting on the CDDT data structure, we check the occupancy grid to ensure that the query point itself is not an obstacle and return a distance of zero if so in order to prevent incorrect results when ray casting from the middle of obstacles which may be removed by the morphological operation.
+By removing entries in the CDDT which can never possibly result in a ray collision, it is possible to further reduce the memory footprint of the data structure. \skcomment{Consider a 3x3 block of obstacles in an otherwise empty map.}{I think this deserves a figure, just to allow the reader to quickly read your paper.} The center obstacle will never be the nearest neighbor in any ray casting query, because any such query would first intersect with one of the 8 surrounding obstacles. To exploit this, one can take the morphological edge map of the occupancy grid map prior to CDDT generation without loss of generality. This can result in significant memory usage and data structure construction time reductions in dense maps where the number of obstacles adjacent to empty cells is small compared to the total number of obstacles. Prior to performing ray casting on the CDDT data structure, we check the occupancy grid to ensure that the query point itself is not an obstacle and return a distance of zero if so in order to prevent incorrect results when ray casting from the middle of obstacles which may be removed by the morphological operation.
 
 \begin{figure}[h]
 \img{slice0_pcddt_basement.png}
@@ -177,20 +227,17 @@ By removing entries in the CDDT which can never possibly result in a ray collisi
 \label{pcddt:slice0}
 \end{figure}
 
-Additionally, consider a line of obstacles aligned along the Y-axis. Every element in this line will be projected into a single list of zero points for the theta=0 slice of the CDDT. However, the middle elements of the line will never result in a collision. Any ray cast from adjacent states in the $\theta=0$ direction will return early in the occupancy grid check, and any ray cast from outside the wall will collide with one of the edge-most obstacles in that line. Therefore in the theta=0 slice, one may discard the zero points corresponding to the middle elements without introducing error. This form of optimization is simple to compute in the cardinal directions, but non-trivial for arbitrary theta not aligned with an axis. Rather than attempting to analytically determine which obstacles may be discarded, it is simpler to prune the data structure by ray casting from every possible state (as in the LUT data structure) and discard any zero point which is unused. 
+\skcomment{Additionally, consider a line of obstacles aligned along the Y-axis.}{While you are at it, put a figure for this one too? } Every element in this line will be projected into a single list of zero points for the theta=0 slice of the CDDT. However, the middle elements of the line will never result in a collision. Any ray cast from adjacent states in the $\theta=0$ direction will return early in the occupancy grid check, and any ray cast from outside the wall will collide with one of the edge-most obstacles in that line. Therefore in the theta=0 slice, one may discard the zero points corresponding to the middle elements without introducing error. This form of optimization is simple to compute in the cardinal directions, but non-trivial for arbitrary theta not aligned with an axis. Rather than attempting to analytically determine which obstacles may be discarded, it is simpler to prune the data structure by ray casting from every possible state (as in the LUT data structure) and discard any zero point which is unused. 
 
 Pruning does also increase precomputation time rendering it incompatible with incremental update, however the reduction of memory usage is worthwhile for static maps. In addition to memory reduction, we find that pruning slightly improves runtime performance, likely as a result of improved caching characteristics.
 
+\skcomment{}{Do you think you can have a subsection called ``analysis'' which has a few propositions/theorems that say things like Memory requirement is $O(NM)$ and running time is $O(1)$? This may be hard given the deadline, but osmething to think about. }
+
+
 \section{EXPERIMENTS}
 
-We have implemented the proposed algorithm in C++, as well as Bresenham’s Line, ray marching, and the LUT approach for comparison. Our source code is available for use and analysis [TODO add a link to github], and Python wrappers are also provided for easier usage. All benchmarks were performed on a desktop computer on a Intel Core i5-4590 CPU @ 3.30GHz with 16GB DDR3 ram @ 1333MHz, running Ubuntu 14.04.
+We have implemented the proposed algorithm in the C++ programming language, as well as Bresenham’s Line, ray marching, and the LUT approach for comparison. Our source code is available for use and analysis [TODO add a link to github], and Python wrappers are also provided for easier usage. All benchmarks were performed on a desktop computer on a Intel Core i5-4590 CPU @ 3.30GHz with 16GB DDR3 ram @ 1333MHz, running Ubuntu 14.04.
 
-
-% \begin{figure}[h]
-% \img{grid_trial2_basement_cropped.png}
-% \caption{Violin plots demonstrating histogram of completion time over a large number of queries for each ray cast method. Basement map. X axis shows time in milliseconds, and Y axis shows the number of queries that completed after that amount of time.}
-% \label{violin:basement:grid}
-% \end{figure}
 
 \begin{figure}[ht]
 \img{basement_grid_random_cropped.png}
@@ -272,7 +319,7 @@ We evaluate algorithm performance in two synthetic benchmarks, using two differe
 \begin{figure}[h]
 \img{particle_trial2_basement_cropped.png}
 \caption{Violin plots for ray casting completion times during the execution of a particle filter. Basement map. Ray casting is primarily done inside of hallways, reducing the mean ray length and thereby improving Bresenham's Line performance. CDDT and PCDDT exploiting radial symmetry while resolving the sensor model.}
-\label{violin:basement:random}
+\label{violin:basement:particle}
 \end{figure}
 
 To simulate real world operating conditions, we have implemented a particle filter localization algorithm using a beam mode sensor model. We provide statistics about the ray cast performance of each algorithm while being used to compute the sensor model, as well as end to end statistics on the number of particles able to be maintained in real-time. While care was taken in implementing the particle filter, there are undoubtedly many optimizations which could further improve end-to-end performance. Thus, these benchmarks should not be considered an upper bound on performance and should be interpreted comparatively.
@@ -496,6 +543,8 @@ LUT & 4.35e-08 & 4.1e-08 & 5e-09 & 8.94 \\
 
 \bibitem{raymarching} K. Perlin and E. M. Hoffert, “Hypertexture.” Computer Graphics, vol 23, no. 3, pp. 297-306, 1989.
 
+\bibitem{acceleratedraymarching} Zuiderveld, Karel, Koning, Anton, and Viergever, Max, “Acceleration of ray-casting using 3D distance transforms”, Proceedings of the SPIE – Visualization in Biomedical Computing 1992, Vol.1808, pp.324-335, 1992.
+ 
 \bibitem{sphere:source} Pharr, M., and R. Fernando. GPU Gems 2: Programming Techniques for High-Performance Graphics and General-Purpose Computation: Addison Wesley Professional. 2005. http://http.developer.nvidia.com/GPUGems2/gpugems2\_chapter08.html
 
 \end{thebibliography}

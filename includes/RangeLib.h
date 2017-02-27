@@ -197,6 +197,12 @@ namespace ranges {
 			for (int y = 0; y < height; ++y) {
 				for (int x = 0; x < width; ++x) {
 					unsigned idx = 4 * y * width + 4 * x;
+
+					// if (trace_grid[x][y]) {
+					// 	image[idx + 0] = 255;
+					// 	image[idx + 1] = 255;
+					// 	image[idx + 2] = 255;
+					// }
 					
 					image[idx + 2] = 255;
 					image[idx + 1] = 255;
@@ -205,7 +211,7 @@ namespace ranges {
 					if (trace_grid[x][y]) {
 						image[idx + 0] = 0;
 						image[idx + 1] = 0;
-						image[idx + 2] = 255;
+						image[idx + 2] = 200;
 					}
 
 					if (grid[x][y]) {
@@ -1526,6 +1532,8 @@ namespace benchmark {
 			std::cout << " -avg time per ray: " << ( t_accum / (float) num_samples) << " sec" << std::endl;
 			std::cout << " -rays cast: " << num_samples << std::endl;
 		}
+
+		ranges::OMap *getMap() {return range.getMap(); }
 
 	protected:
 		range_T range;
