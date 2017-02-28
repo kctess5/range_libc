@@ -308,6 +308,15 @@ namespace ranges {
 
 		DistanceTransform() : width(0), height(0) {}
 
+		DistanceTransform(int w, int h) : width(w), height(h) {
+			// allocate space in the vectors
+			for (int i = 0; i < width; ++i) {
+				std::vector<float> y_axis;
+				for (int q = 0; q < height; ++q) y_axis.push_back(1.0);
+				grid.push_back(y_axis);
+			}
+		}
+
 		// computes the distance transform of a given OMap
 		DistanceTransform(OMap *map) {
 			width = map->width;
@@ -346,12 +355,23 @@ namespace ranges {
 			lodepng::State state; //optionally customize this one
 			char image[width * height * 4];
 
+			float scale = 0;
+			for (int y = 0; y < height; ++y) {
+				for (int x = 0; x < width; ++x) {
+					scale = std::max(grid[x][y], scale);
+				}
+			}
+			scale *= 1.0 / 255.0;
 			for (int y = 0; y < height; ++y) {
 				for (int x = 0; x < width; ++x) {
 					unsigned idx = 4 * y * width + 4 * x;
-					image[idx + 2] = std::min(255, (int)grid[x][y]);
-					image[idx + 1] = std::min(255, (int)grid[x][y]);
-					image[idx + 0] = std::min(255, (int)grid[x][y]);
+					// std::cout << (int)(grid[x][y] / scale) << " " << grid[x][y] / scale << std::endl;
+					// image[idx + 2] = std::min(255, (int)grid[x][y]);
+					// image[idx + 1] = std::min(255, (int)grid[x][y]);
+					// image[idx + 0] = std::min(255, (int)grid[x][y]);
+					image[idx + 2] = (int)(grid[x][y] / scale);
+					image[idx + 1] = (int)(grid[x][y] / scale);
+					image[idx + 0] = (int)(grid[x][y] / scale);
 					image[idx + 3] = 255;
 				}
 			}
@@ -1433,6 +1453,24 @@ namespace ranges {
 			#else
 			return giant_lut[(int)x][(int)y][discretize_theta(heading)];
 			#endif
+		}
+
+		DistanceTransform *get_slice(float theta) {
+			int width = giant_lut.size();
+			int height = giant_lut[0].size();
+			DistanceTransform *slice = new DistanceTransform(width, height);
+
+			int dtheta = discretize_theta(theta);
+
+			for (int x = 0; x < width; ++x) {
+				for (int y = 0; y < height; ++y) {
+					slice->grid[x][y] = giant_lut[x][y][dtheta];
+					// slice->grid[x][y] = 100;
+					// std::cout << giant_lut[x][y][dtheta] << std::endl;
+				}
+			}
+
+			return slice;
 		}
 	protected:
 		int theta_discretization;

@@ -43,8 +43,11 @@ DEFINE_string(query, "",
 
 DEFINE_string(trace_path, "", "Path to output trace map of memory access pattern. Works for Bresenham's Line or Ray Marching.");
 
+DEFINE_string(lut_slice_path, "", "Path to output a slice of the LUT.");
+DEFINE_string(lut_slice_theta, "1.57", "Which LUT slice to output");
+
 #define MAX_DISTANCE 500
-#define THETA_DISC 108
+#define THETA_DISC 16
 #define MB (1024.0*1024.0)
 // #ifdef BASEPATH
 // #define FLAGS_log_path BASEPATH "/tmp/basement/"
@@ -290,6 +293,12 @@ int main(int argc, char *argv[])
 			mark.grid_sample(GRID_STEP, GRID_RAYS, GRID_SAMPLES);
 		else if (FLAGS_which_benchmark == "random")
 			mark.random_sample(RANDOM_SAMPLES);
+
+		if (!FLAGS_lut_slice_path.empty()) {
+			std::cout << "...saving LUT slice theta="  << FLAGS_lut_slice_theta << " to: " << FLAGS_lut_slice_path << std::endl;
+			float theta = std::stof(FLAGS_lut_slice_theta);
+			glt.get_slice(theta)->save(FLAGS_lut_slice_path);
+		}
 		if (DO_LOG) {
 			save_log(tlog, FLAGS_log_path+"/glt.csv");
 		}

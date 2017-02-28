@@ -5,6 +5,7 @@ from yaml import CLoader as Loader, CDumper as Dumper
 import ujson
 import itertools
 import argparse
+import scipy.misc
 
 # dump = yaml.dump(dummy_data, fh, encoding='utf-8', default_flow_style=False, Dumper=Dumper)
 # data = yaml.load(fh, Loader=Loader)
@@ -41,7 +42,7 @@ class CDDTSlice(object):
         max_zero = max(map(max, non_empty_zeros))
         return [int(np.ceil(max_zero - min_zero))+1,len(self.zeros)]
 
-    def make_ddt(self, saw_tooth=True):
+    def make_ddt(self, saw_tooth=True, reversed_dir=False):
         non_empty_zeros = filter(lambda x: len(x) > 0, self.zeros)
         if len(non_empty_zeros) == 0:
             print "Empty slice, nothing to visualize"
@@ -51,24 +52,45 @@ class CDDTSlice(object):
         min_zero = min(map(min, non_empty_zeros))
         max_zero = max(map(max, non_empty_zeros))
         height = int(np.ceil(max_zero - min_zero))+1
-        ddt = np.zeros((height,len(self.zeros)))
+
+        grid_height = len(self.zeros)
+        # ddt = np.zeros((height,len(self.zeros)))
+        ddt = np.zeros((grid_height,len(self.zeros)))
+        offset = int((grid_height - height) / 2.0)
 
         for x in xrange(len(self.zeros)):
             for zp in self.zeros[x]:
-                y = int(zp - min_zero)
+                y = int(zp - min_zero+offset)
                 ddt[y,x] = 1
 
         if saw_tooth:
             for x in xrange(len(self.zeros)):
-                last = -1
-                for y in xrange(height):
-                    if ddt[y,x] == 1:
-                        last = 0
-                        ddt[y,x] = last
-                    elif last >= 0:
-                        last = last + 1
-                        ddt[y,x] = last
+                if reversed_dir:
+                    last = -1
+                    for y in reversed(xrange(grid_height)):
+                        if ddt[y,x] == 1:
+                            last = 0
+                            ddt[y,x] = last
+                        elif last >= 0:
+                            last = last + 1
+                            ddt[y,x] = last
+                        else:
+                            # make the no data regions white
+                            ddt[y,x] = -1
+                else:
+                    last = -1
+                    for y in xrange(grid_height):
+                        if ddt[y,x] == 1:
+                            last = 0
+                            ddt[y,x] = last
+                        elif last >= 0:
+                            last = last + 1
+                            ddt[y,x] = last
+                        else:
+                            # make the no data regions white
+                            ddt[y,x] = -1
 
+            ddt[ddt == -1] = np.max(ddt)
         return ddt
 
     def visualize():
@@ -129,7 +151,7 @@ class SliceScroller(object):
         # self.fig = fig
         self.ax1.set_title('use scroll wheel to navigate images')
         self.cddt = cddt
-        self.ind = 0
+        self.ind = 2
 
         self.fig.canvas.mpl_connect('scroll_event', self.onscroll)
 
@@ -163,7 +185,7 @@ class SliceScroller(object):
 
         if not isinstance(self.ddts[self.ind], np.ndarray):
         # if self.ddts[self.ind] == None:
-            self.ddts[self.ind] = np.sqrt(self.cddt.slices[self.ind].make_ddt(True))
+            self.ddts[self.ind] = np.sqrt(self.cddt.slices[self.ind].make_ddt(True)).transpose()
        
         ys = map(len, self.cddt.slices[self.ind].zeros)
         compression_factor = 2*self.cddt.map.width * self.cddt.map.height / (sum(ys))
@@ -178,10 +200,6 @@ class SliceScroller(object):
         self.fig.canvas.draw()
         # self.im.set_data(self.ddt)
         # self.im.axes.figure.canvas.draw()
-
-
-
-
 
 
 # ind = 0
@@ -205,14 +223,80 @@ class SliceScroller(object):
 #   fig.canvas.mpl_connect('scroll_event', onscroll)
 #   plt.show()
 
+# generate LUT slice vs DDT graphics
+if __name__ == '__main__':
+    ddt_img = scipy.misc.imread("./paper/ddt_neg_pi_over_4_no_pow.png")
+    lut_img = scipy.misc.imread("./paper/lut_slice_neg_pi_over_4.png")
+
+
+
+    ax1 = plt.subplot2grid((4, 1), (0, 0), rowspan=3)
+    ax2 = plt.subplot2grid((4, 1), (3, 0))
+    # plt.tight_layout()
+    row_num = 700
+    ax1.axis('off')
+    ax2.set_ylim([0,200])
+    ax2.set_xlim([0,ddt_img.shape[1]])
+    
+    ddt_img_color = np.zeros((ddt_img.shape[0], ddt_img.shape[1], 3), dtype=np.uint8)
+    ddt_img_color[:, :, :] = ddt_img[:, :, np.newaxis]
+    ax2.plot(ddt_img[row_num,:])
+    
+    ddt_img_color[row_num-2:row_num+2,:,:] = (0,0,255)
+    ddt_img_color[:3,:,:] = (0,0,0)
+    ddt_img_color[-3:,:,:] = (0,0,0)
+
+    ax1.imshow(ddt_img_color)
+
+    plt.figure()
+
+    ax1 = plt.subplot2grid((4, 1), (0, 0), rowspan=3)
+    ax2 = plt.subplot2grid((4, 1), (3, 0))
+    # plt.tight_layout()
+    row_num = 600
+    ax1.axis('off')
+    ax2.set_ylim([0,250])
+    ax2.set_xlim([0,lut_img.shape[1]])
+    ax2.plot(lut_img[row_num,:])
+
+    lut_img_color = np.zeros((lut_img.shape[0], lut_img.shape[1], 3), dtype=np.uint8)
+    lut_img_color[:, :, :] = lut_img[:, :, np.newaxis]
+    lut_img_color[row_num-2:row_num+2,:,:] = (0,0,255)
+    lut_img_color[:3,:,:] = (0,0,0)
+    lut_img_color[-3:,:,:] = (0,0,0)
+    ax1.imshow(lut_img_color, cmap="gray")
+    
+
+    
+
+    # plt.ylim([0,250])
+    # plt.plot(lut_img[600,:])
+    # plt.figure()
+    # lut_img[600,:] = 255
+    # plt.imshow(lut_img, cmap="gray")
+    plt.show()
+
+    exit()
+
+
+
 if __name__ == '__main__':
     args = parser.parse_args()
     cddt = CDDT(args.path)
 
+    # plt.imshow(np.sqrt(cddt.slices[3].make_ddt(reversed_dir=True).transpose()), cmap="gray")
+    w = 1350
+    img = np.power(cddt.slices[3].make_ddt(reversed_dir=True).transpose()[120:120+w,:w],0.7)
+    # img = np.power(cddt.slices[3].make_ddt(reversed_dir=True).transpose()[120:120+w,:w],1.0)
+    plt.imshow(img, cmap="gray")
+    # scipy.misc.imsave("./paper/ddt_neg_pi_over_4_no_pow.png",img)
+    # plt.imshow(cddt.slices[3].make_ddt(reversed_dir=True), cmap="gray")
+    plt.show()
+
     
     # X = np.random.rand(20, 20, 40)
-    tracker = SliceScroller(cddt)
-    plt.show()
+    # tracker = SliceScroller(cddt)
+    # plt.show()
 
 
     # You probably won't need this if you're embedding things in a tkinter plot...
