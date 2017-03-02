@@ -47,7 +47,7 @@ DEFINE_string(lut_slice_path, "", "Path to output a slice of the LUT.");
 DEFINE_string(lut_slice_theta, "1.57", "Which LUT slice to output");
 
 #define MAX_DISTANCE 500
-#define THETA_DISC 16
+#define THETA_DISC 108
 #define MB (1024.0*1024.0)
 // #ifdef BASEPATH
 // #define FLAGS_log_path BASEPATH "/tmp/basement/"
@@ -283,6 +283,7 @@ int main(int argc, char *argv[])
 
 		Benchmark<GiantLUTCast> mark = Benchmark<GiantLUTCast>(glt);
 		std::cout << "...lut size (MB): " << glt.memory() / MB << std::endl;
+		std::cout << "...construction time: " << construction_dur.count() << std::endl;
 		std::cout << "...Running grid benchmark" << std::endl;
 		if (DO_LOG) {
 			tlog.str("");

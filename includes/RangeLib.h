@@ -68,6 +68,9 @@ Useful Links: https://github.com/MRPT/mrpt/blob/4137046479222f3a71b5c00aee1d5fa8
 #define _USE_LRU_CACHE 0
 #define _LRU_CACHE_SIZE 1000000
 
+// not implemented yet -> use 16 bit integers to store zero points
+#define _CDDT_SHORT_DATATYPE 1
+
 #define _GIANT_LUT_SHORT_DATATYPE 1
 
 // slow unoptimized version 
@@ -1364,6 +1367,7 @@ namespace ranges {
 			limits_div_max = std::numeric_limits<uint16_t>::max() / max_range;
 			#endif
 			RayMarching seed_cast = RayMarching(m, mr);
+			// CDDTCast seed_cast = CDDTCast(m, mr, td);
 
 			for (int x = 0; x < m.width; ++x) {
 				std::vector<std::vector<lut_t> > lut_slice;
