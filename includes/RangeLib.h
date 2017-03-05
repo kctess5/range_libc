@@ -29,10 +29,8 @@ Useful Links: https://github.com/MRPT/mrpt/blob/4137046479222f3a71b5c00aee1d5fa8
 #define RANGE_LIB_H
 
 #include "vendor/lodepng/lodepng.h"
-// #include "vendor/dt/dt.h"
-
+#include "vendor/distance_transform.h"
 #include "includes/RangeUtils.h"
-#include "vendor/distance_transform/include/distance_transform/distance_transform.hpp"
 
 #include <stdio.h>      /* printf */
 #include <cstdlib>
@@ -102,6 +100,15 @@ Useful Links: https://github.com/MRPT/mrpt/blob/4137046479222f3a71b5c00aee1d5fa8
 #define J2 J1 J1
 #define J3 J1 J1 J1
 #define J4 J2 J2
+
+#ifdef USE_CUDA
+	// #define CHUNK_SIZE (64*256)
+	// #define NUM_THREADS (256)
+	#include "includes/CudaRangeLib.h"
+	// #include <cuda.h>
+	// #include <cuda_runtime_api.h>
+#endif
+
 
 namespace ranges {
 	struct OMap
@@ -249,10 +256,10 @@ namespace ranges {
 				for (int x = 0; x < width; ++x) {
 					unsigned idx = 4 * y * width + 4 * x;
 					
-					image[idx + 2] = 255;
-					image[idx + 1] = 255;
-					image[idx + 0] = 255;
-					image[idx + 3] = 255;
+					image[idx + 2] = (char)255;
+					image[idx + 1] = (char)255;
+					image[idx + 0] = (char)255;
+					image[idx + 3] = (char)255;
 
 					if (grid[x][y]) {
 						image[idx + 0] = 0;
@@ -270,7 +277,7 @@ namespace ranges {
 
 		OMap make_edge_map(bool count_corners) {
 			OMap edge_map = OMap(width, height);
-			int occupied = 0;
+			// int occupied = 0;
 			for (int x = 0; x < width; ++x) {
 				for (int y = 0; y < height; ++y) {
 					if (!isOccupiedNT(x,y)) continue;
@@ -306,6 +313,7 @@ namespace ranges {
 		unsigned width;
 		unsigned height;
 		std::vector<std::vector<float> > grid;
+		// float *grid;
 
 		float get(int x, int y) { return grid[x][y]; }
 
@@ -325,17 +333,17 @@ namespace ranges {
 			width = map->width;
 			height = map->height;
 
-			dope::Index2 grid_size({width, height});
-			dope::Grid<float, 2> f(grid_size);
-			dope::Grid<dope::SizeType, 2> indices(grid_size);
+			std::vector<std::size_t> grid_size({width, height});
+		    dt::MMArray<float, 2> f(grid_size.data());
+		    dt::MMArray<std::size_t, 2> indices(grid_size.data());
 
-			for (dope::SizeType i = 0; i < width; ++i)
-		        for (dope::SizeType j = 0; j < height; ++j)
-		        	if (map->isOccupied(i,j)) f[i][j] = 0.0;
+		    for (std::size_t i = 0; i < width; ++i)
+		        for (std::size_t j = 0; j < height; ++j)
+		        	if (map->isOccupied(i,j)) f[i][j] = 0.0f;
 		        	else f[i][j] = std::numeric_limits<float>::max();
-
-			dt::DistanceTransform::initializeIndices(indices);
-			dt::DistanceTransform::distanceTransformL2(f, f, indices, false, 1);
+		    
+		    // dt::DistanceTransform::initializeIndices(indices);  // this is not necessary, since distanceTransformL2() already does it
+			dt::DistanceTransform::distanceTransformL2(f, f, indices, false);
 
 
 			// allocate space in the vectors
@@ -375,7 +383,7 @@ namespace ranges {
 					image[idx + 2] = (int)(grid[x][y] / scale);
 					image[idx + 1] = (int)(grid[x][y] / scale);
 					image[idx + 0] = (int)(grid[x][y] / scale);
-					image[idx + 3] = 255;
+					image[idx + 3] = (char)255;
 				}
 			}
 			unsigned error = lodepng::encode(png, reinterpret_cast<const unsigned char*> (image), width, height, state);
@@ -504,6 +512,47 @@ namespace ranges {
 
 		int memory() { return map.memory(); }
 	};
+
+	#ifdef USE_CUDA
+	class RayMarchingGPU : public RangeMethod
+	{
+	public:
+		RayMarchingGPU(OMap m, float mr) : RangeMethod(m, mr) { 
+			distImage = new DistanceTransform(&m);
+			rmc = new RayMarchingCUDA(distImage->grid, distImage->width, distImage->height, max_range);
+		}
+		~RayMarchingGPU() {
+			delete rmc;
+			delete distImage;
+		};
+
+		float calc_range(float x, float y, float heading) {
+			std::cout << "Do not call calc_range on RayMarchingGPU, requires batched queries with calc_range_many" << std::endl;
+			return -1.0;
+		}
+
+		void calc_range_many(float *ins, float *outs, int num_casts) {
+			if (!(num_casts % CHUNK_SIZE == 0) && !already_warned) {
+				std::cout << "\nFor better performance, call calc_range_many with some multiple of " << CHUNK_SIZE << " queries. ";
+				std::cout << "You can change the chunk size with -DCHUNK_SIZE=[integer].\n" << std::endl;
+				already_warned = true;
+			}
+			int iters = std::ceil((float)num_casts / (float)CHUNK_SIZE);
+
+			for (int i = 0; i < iters; ++i) {
+				int num_in_chunk = CHUNK_SIZE;
+				if (i == iters - 1) num_in_chunk = num_casts-i*CHUNK_SIZE;
+				rmc->calc_range_many(&ins[i*CHUNK_SIZE*3],&outs[i*CHUNK_SIZE],num_in_chunk);
+			}
+		}
+	
+		int memory() { return distImage->memory(); }
+	protected:
+		DistanceTransform *distImage = 0;
+		RayMarchingCUDA * rmc = 0;
+		bool already_warned = false;
+	};
+	#endif
 
 	class RayMarching : public RangeMethod
 	{
@@ -802,7 +851,7 @@ namespace ranges {
 						lut_bin = &compressed_lut[angle_index][lut_index];
 
 						// binary search for next greatest element
-						int low = 0;
+						// int low = 0;
 						int high = lut_bin->size() - 1;
 
 						// there are no entries in this lut bin
@@ -1170,7 +1219,7 @@ namespace ranges {
 			} else {
 				// std::cout << "flipped" << std::endl;
 				// binary search for next greatest element
-				int low = 0;
+				// int low = 0;
 				int high = lut_bin->size() - 1;
 
 				// there are no entries in this lut bin
@@ -1327,7 +1376,6 @@ namespace ranges {
 		// cached list of y translations necessary to project points into lut space
 		std::vector<float> lut_translations;
 		
-
 		#if _USE_CACHED_TRIG == 1
 		std::vector<float> cos_values;
 		std::vector<float> sin_values;
@@ -1469,8 +1517,6 @@ namespace ranges {
 			for (int x = 0; x < width; ++x) {
 				for (int y = 0; y < height; ++y) {
 					slice->grid[x][y] = giant_lut[x][y][dtheta];
-					// slice->grid[x][y] = 100;
-					// std::cout << giant_lut[x][y][dtheta] << std::endl;
 				}
 			}
 
@@ -1522,7 +1568,7 @@ namespace benchmark {
 					for (int y = 0; y < map->height; y += step_size)
 					{
 						auto start_time = std::chrono::high_resolution_clock::now();
-						for (int i = 0; i < samples; ++i)
+						for (int j = 0; j < samples; ++j)
 						{
 							volatile float r = range.calc_range(x,y,angle);
 						}
@@ -1545,6 +1591,35 @@ namespace benchmark {
 			std::cout << " -avg time per ray: " << ( t_accum / (float) num_cast) << " sec" << std::endl;
 			std::cout << " -rays cast: " << num_cast << std::endl;
 			std::cout << " -total time: " << t_accum << " sec" << std::endl;
+		}
+
+		static int num_grid_samples(int step_size, int num_rays, int samples, int map_width, int map_height) {
+			int num_samples = 0;
+			for (int i = 0; i < num_rays; ++i)
+				for (int x = 0; x < map_width; x += step_size)
+					for (int y = 0; y < map_height; y += step_size)
+						for (int j = 0; j < samples; ++j)
+							num_samples++;
+			return num_samples;
+		}
+
+		static void get_grid_samples(float *queries, int step_size, int num_rays, int samples, int map_width, int map_height) {
+			float coeff = (2.0 * M_PI) / num_rays;
+			double t_accum = 0;
+			int ind = 0;
+			for (int i = 0; i < num_rays; ++i) {
+				float angle = i * coeff;
+				for (int x = 0; x < map_width; x += step_size) {
+					for (int y = 0; y < map_height; y += step_size) {
+						for (int j = 0; j < samples; ++j) {
+							queries[ind*3] =  (float)x;
+							queries[ind*3+1] = (float)y;
+							queries[ind*3+2] = angle;
+							ind++;
+						}
+					}
+				}
+			}
 		}
 
 		void random_sample(int num_samples) {
@@ -1573,6 +1648,21 @@ namespace benchmark {
 			std::cout << "finished random sample after: " << t_accum << " sec" << std::endl;
 			std::cout << " -avg time per ray: " << ( t_accum / (float) num_samples) << " sec" << std::endl;
 			std::cout << " -rays cast: " << num_samples << std::endl;
+		}
+
+		static void get_random_samples(float *queries, int num_samples, int map_width, int map_height) {
+			std::default_random_engine generator;
+			generator.seed(std::chrono::duration_cast<std::chrono::nanoseconds>(
+                   std::chrono::system_clock::now().time_since_epoch()).count());
+			std::uniform_real_distribution<float> randx = std::uniform_real_distribution<float>(1.0,map_width - 1.0);
+			std::uniform_real_distribution<float> randy = std::uniform_real_distribution<float>(1.0,map_height - 1.0);
+			std::uniform_real_distribution<float> randt = std::uniform_real_distribution<float>(0.0,M_2PI);
+
+			for (int i = 0; i < num_samples; ++i) {
+				queries[3*i]   = randx(generator);
+				queries[3*i+1] = randy(generator);
+				queries[3*i+2] = randt(generator);
+			}
 		}
 
 		ranges::OMap *getMap() {return range.getMap(); }

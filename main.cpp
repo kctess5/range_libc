@@ -57,7 +57,9 @@ DEFINE_string(lut_slice_theta, "1.57", "Which LUT slice to output");
 #define GRID_STEP 10
 #define GRID_RAYS 40
 #define GRID_SAMPLES 1
-#define RANDOM_SAMPLES 100
+#define RANDOM_SAMPLES 200000
+// #define RANDOM_SAMPLES (CHUNK_SIZE*2)
+// #define RANDOM_SAMPLES (CHUNK_SIZE*10)
 
 using namespace ranges;
 using namespace benchmark;
@@ -100,6 +102,10 @@ int main(int argc, char *argv[])
 	} else {
 		map = OMap(FLAGS_map_path);
 	}
+
+
+	// DistanceTransform dt = DistanceTransform(&map);
+	// dt.save("./test.png");
 
 	bool DO_LOG = (FLAGS_log_path != "");
 	std::stringstream tlog;
@@ -174,6 +180,7 @@ int main(int argc, char *argv[])
 		std::chrono::duration<double> construction_dur = 
 			std::chrono::duration_cast<std::chrono::duration<double>>(construction_end - construction_start);
 		Benchmark<RayMarching> mark = Benchmark<RayMarching>(rm);
+		std::cout << "...construction time: " << construction_dur.count() << std::endl;
 		std::cout << "...Running grid benchmark" << std::endl;
 		if (DO_LOG) {
 			tlog.str("");
@@ -303,6 +310,72 @@ int main(int argc, char *argv[])
 		if (DO_LOG) {
 			save_log(tlog, FLAGS_log_path+"/glt.csv");
 		}
+	}
+
+	if (utils::has("RayMarchingGPU", methods) || utils::has("rmgpu", methods)) {
+		#ifdef USE_CUDA
+		std::cout << "\n...Loading range method: RayMarchingGPU" << std::endl;
+		auto construction_start = std::chrono::high_resolution_clock::now();
+		RayMarchingGPU rmgpu = RayMarchingGPU(map, MAX_DISTANCE);
+		auto construction_end = std::chrono::high_resolution_clock::now();
+		std::chrono::duration<double> construction_dur = 
+			std::chrono::duration_cast<std::chrono::duration<double>>(construction_end - construction_start);
+		std::cout << "...construction time: " << construction_dur.count() << std::endl;
+
+		if (FLAGS_which_benchmark == "grid") {
+			int num_samples = Benchmark<RayMarching>::num_grid_samples(GRID_STEP, GRID_RAYS, GRID_SAMPLES, map.width, map.height);
+			float *samples = new float[num_samples*3];
+			float *outs = new float[num_samples];
+			
+
+			Benchmark<RayMarching>::get_grid_samples(samples, GRID_STEP, GRID_RAYS, GRID_SAMPLES, map.width, map.height);
+			// warmup
+			rmgpu.calc_range_many(samples, outs, num_samples);
+
+			auto mark_start = std::chrono::high_resolution_clock::now();
+			rmgpu.calc_range_many(samples, outs, num_samples);
+			auto mark_end = std::chrono::high_resolution_clock::now();
+			std::chrono::duration<double> mark_dur = 
+				std::chrono::duration_cast<std::chrono::duration<double>>(mark_end - mark_start);
+			std::cout << "...benchmark time: " << mark_dur.count() << std::endl;
+			std::cout << ".....avg time per ray cast: " << mark_dur.count() / num_samples << std::endl;
+			std::cout << ".....rays cast: " << num_samples << std::endl;
+
+		}
+		
+		if (FLAGS_which_benchmark == "random") {
+			float *samples = new float[RANDOM_SAMPLES*3];
+			float *outs = new float[RANDOM_SAMPLES];
+			
+			// warm up
+			Benchmark<RayMarching>::get_random_samples(samples, RANDOM_SAMPLES, map.width, map.height);
+			rmgpu.calc_range_many(samples, outs, RANDOM_SAMPLES);
+			Benchmark<RayMarching>::get_random_samples(samples, RANDOM_SAMPLES, map.width, map.height);
+			rmgpu.calc_range_many(samples, outs, RANDOM_SAMPLES);
+			
+			Benchmark<RayMarching>::get_random_samples(samples, RANDOM_SAMPLES, map.width, map.height);
+			auto mark_start = std::chrono::high_resolution_clock::now();
+			rmgpu.calc_range_many(samples, outs, RANDOM_SAMPLES);
+			auto mark_end = std::chrono::high_resolution_clock::now();
+			std::chrono::duration<double> mark_dur = 
+				std::chrono::duration_cast<std::chrono::duration<double>>(mark_end - mark_start);
+			std::cout << "...benchmark time: " << mark_dur.count() << std::endl;
+			std::cout << ".....avg time per ray cast: " << mark_dur.count() / RANDOM_SAMPLES << std::endl;
+			std::cout << ".....rays cast: " << RANDOM_SAMPLES << std::endl;
+
+			// RayMarching rm = RayMarching(map, MAX_DISTANCE);
+			// for (int i = 0; i < RANDOM_SAMPLES; ++i) {
+			// 	if (std::abs(outs[i] - rm.calc_range(samples[3*i], samples[3*i+1], samples[3*i+2])) > 2) {
+			// 		std::cout << "x: " << samples[3*i] << " y: " << samples[3*i+1] << " t: " << samples[3*i+2] << std::endl;
+			// 		std::cout << "   expected: " << rm.calc_range(samples[3*i], samples[3*i+1], samples[3*i+2]) << std::endl;
+			// 		std::cout << "   got: " << outs[i] << std::endl;
+			// 	}
+			// }
+		}
+
+		#else
+		std::cout << "\nNot compiled with CUDA enabled, please enable flag -DWITH_CUDA=ON to run RayMarchingGPU benchmarks." << std::endl;
+		#endif
 	}
 
 	if (DO_LOG) {

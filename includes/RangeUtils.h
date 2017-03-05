@@ -56,18 +56,18 @@ namespace utils {
 	public:
 		KeyMaker() {}
 		KeyMaker(int width, int height, int theta_discretization) {
-			y_shift = (int) ceil(log2(theta_discretization));
-			x_shift = (int) ceil(log2(height)) + y_shift;
-			int bitness = (int) ceil(log2(width)) + x_shift;
+			y_shift = (int) std::ceil(std::log2(theta_discretization));
+			x_shift = (int) std::ceil(std::log2(height)) + y_shift;
+			int bitness = (int) std::ceil(std::log2(width)) + x_shift;
 
-			if (bitness > log2(std::numeric_limits<key_T>::max())) {
+			if (bitness > std::log2(std::numeric_limits<key_T>::max())) {
 				std::cerr << "Key bitness too large for integer packing scheme. Check your KeyMaker template type." << std::endl;
 			}
 
 			// make bit masks for unpacking the various values
-			t_mask = pow(2, y_shift)-1;
-			y_mask = pow(2, x_shift)-1 - t_mask;
-			x_mask = pow(2, bitness)-1 - y_mask - t_mask;
+			t_mask = std::pow(2, y_shift)-1;
+			y_mask = std::pow(2, x_shift)-1 - t_mask;
+			x_mask = std::pow(2, bitness)-1 - y_mask - t_mask;
 		};
 		~KeyMaker() {};
 		key_T make_key(int x, int y, int t) {
@@ -236,8 +236,6 @@ namespace utils {
 		serialize(vals,&ss);
 		return ss.str();
 	}
-
-
 
 } // namespace utils
 

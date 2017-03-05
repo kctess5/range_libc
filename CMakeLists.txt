@@ -7,18 +7,21 @@ file(GLOB SRCS
 	main.cpp 
 	"vendor/lodepng/lodepng.cpp" )
 
+option(WITH_CUDA "Compile CUDA ray cast varients" ON)
+# set(CHUNK_SIZE 16384)
+# set(CHUNK_THREADS 256)
+set(CHUNK_SIZE 262144)
+set(CHUNK_THREADS 256)
+# set(CHUNK_SIZE 65536)
+# set(CHUNK_THREADS 256)
+
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib")
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib")
 set(CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake)
 
-#option(WITH_RTTI "Build DopeVector using RTTI or not" ON)
-option(WITH_EIGEN "Build DopeVector with Index<Dimension> as Eigen Matrix (if present) or not." ON)
-option(ATTACH_SOURCES "When generating an IDE project, add DopeVector header files to project sources." ON)
-
 SET(BASEPATH "${CMAKE_SOURCE_DIR}") 
 add_definitions ( -DBASEPATH="${BASEPATH}" )
-add_subdirectory(${BASEPATH}/vendor/distance_transform ${CMAKE_CURRENT_BINARY_DIR}/lib_distance_transform)
 add_subdirectory(${BASEPATH}/vendor/gflags)
 
 # Use the basepath as a search location for includes
@@ -35,7 +38,6 @@ else()
         message(STATUS "The compiler ${CMAKE_CXX_COMPILER} has no C++11 support. Please use a different C++ compiler.")
 endif()
 
-
 # set(CMAKE_CXX_FLAGS "-march=native -fverbose-asm -ffast-math -fno-math-errno -g -save-temps ${CMAKE_CXX_FLAGS}")
 # set(CMAKE_CXX_FLAGS "-march=native -ffast-math -fno-math-errno -g -rdynamic -save-temps ${CMAKE_CXX_FLAGS}")
 set(CMAKE_CXX_FLAGS "-march=native -ffast-math -fno-math-errno ${CMAKE_CXX_FLAGS}")
@@ -44,5 +46,25 @@ set(CMAKE_CXX_FLAGS "-march=native -ffast-math -fno-math-errno ${CMAKE_CXX_FLAGS
 
 set(CMAKE_BUILD_TYPE Release)
 
-add_executable(range_lib ${SRCS})
-target_link_libraries(range_lib gflags distance_transform pthread)
+
+if (WITH_CUDA)
+	add_definitions(-DUSE_CUDA)
+	add_definitions(-DCHUNK_SIZE=${CHUNK_SIZE})
+	add_definitions(-DNUM_THREADS=${CHUNK_THREADS})
+
+	file(GLOB CUDA_SRCS 
+		main.cpp 
+		"includes/kernels.cu"
+		"vendor/lodepng/lodepng.cpp" )
+
+	set(CUDA_TOOLKIT_ROOT_DIR "/usr/local/cuda-7.5")
+	find_package(CUDA REQUIRED)
+	cuda_add_executable(range_lib ${CUDA_SRCS})
+	# message(${CUDA_VERSION})
+
+else()
+	add_executable(range_lib ${SRCS})
+endif()
+
+
+target_link_libraries(range_lib gflags pthread)
