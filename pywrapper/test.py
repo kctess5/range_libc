@@ -15,11 +15,12 @@ import itertools, time
 
 
 # testMap = range_lib.PyOMap("../maps/basement_hallways_5cm.png",1)
-testMap = range_lib.PyOMap("../maps/synthetic.map.png",1)
+# testMap = range_lib.PyOMap("../maps/synthetic.map.png",1)
+testMap = range_lib.PyOMap("/home/racecar/racecar-ws/src/TA_examples/lab5/maps/basement.png",1)
 
 if testMap.error():
 	exit()
-# testMap.save("./test.png")
+testMap.save("./test.png")
 
 num_vals = 100000
 
@@ -30,15 +31,24 @@ num_vals = 100000
 
 print "Init: bl"
 bl = range_lib.PyBresenhamsLine(testMap, 500)
-print "Init: rm"
-rm = range_lib.PyRayMarching(testMap, 500)
-print "Init: cddt"
-cddt = range_lib.PyCDDTCast(testMap, 500, 108)
-cddt.prune()
-print "Init: glt"
-glt = range_lib.PyGiantLUTCast(testMap, 500, 108)
+
+bl.calc_range(100,100,np.pi/4.0)
+bl.save_trace("./trace.png")
+
+# print "Init: rm"
+# rm = range_lib.PyRayMarching(testMap, 500)
+# print "Init: cddt"
+# cddt = range_lib.PyCDDTCast(testMap, 500, 108)
+# cddt.prune()
+# print "Init: glt"
+# glt = range_lib.PyGiantLUTCast(testMap, 500, 108)
 # this is for testing the amount of raw functional call overhead, does not compute ranges
 # null = range_lib.PyNull(testMap, 500, 108)
+
+
+
+
+exit()
 
 for x in xrange(10):
 	vals = np.random.random((3,num_vals)).astype(np.float32)

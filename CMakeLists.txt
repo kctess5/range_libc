@@ -48,7 +48,7 @@ set(CMAKE_BUILD_TYPE Release)
 
 
 if (WITH_CUDA)
-	add_definitions(-DUSE_CUDA)
+	add_definitions(-DUSE_CUDA=1)
 	add_definitions(-DCHUNK_SIZE=${CHUNK_SIZE})
 	add_definitions(-DNUM_THREADS=${CHUNK_THREADS})
 
@@ -63,6 +63,7 @@ if (WITH_CUDA)
 	# message(${CUDA_VERSION})
 
 else()
+	add_definitions(-DUSE_CUDA=0)
 	add_executable(range_lib ${SRCS})
 endif()
 

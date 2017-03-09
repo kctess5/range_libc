@@ -49,7 +49,7 @@ Useful Links: https://github.com/MRPT/mrpt/blob/4137046479222f3a71b5c00aee1d5fa8
 #include <cassert>
 #include <tuple>
 
-#define _MAKE_TRACE_MAP 0
+#define _MAKE_TRACE_MAP 1
 #define _TRACK_LUT_SIZE 0
 #define _TRACK_COLLISION_INDEXES 0
 
@@ -68,8 +68,11 @@ Useful Links: https://github.com/MRPT/mrpt/blob/4137046479222f3a71b5c00aee1d5fa8
 
 // not implemented yet -> use 16 bit integers to store zero points
 #define _CDDT_SHORT_DATATYPE 1
-
 #define _GIANT_LUT_SHORT_DATATYPE 1
+
+// these flags determine whether to compile helper functions specially designed for 6.141 lab 5
+#define ROS_WORLD_TO_GRID_CONVERSION 1
+#define SENSOR_MODEL_HELPERS 1
 
 // slow unoptimized version 
 // #define _USE_ALTERNATE_MOD 0
@@ -101,12 +104,10 @@ Useful Links: https://github.com/MRPT/mrpt/blob/4137046479222f3a71b5c00aee1d5fa8
 #define J3 J1 J1 J1
 #define J4 J2 J2
 
-#ifdef USE_CUDA
-	// #define CHUNK_SIZE (64*256)
-	// #define NUM_THREADS (256)
+#if USE_CUDA == 1
 	#include "includes/CudaRangeLib.h"
-	// #include <cuda.h>
-	// #include <cuda_runtime_api.h>
+#else
+	#define USE_CUDA 0
 #endif
 
 
@@ -121,6 +122,16 @@ namespace ranges {
 		std::string fn; // filename
 		#if _MAKE_TRACE_MAP == 1
 		std::vector<std::vector<bool> > trace_grid;
+		#endif
+
+		// this stuff is for ROS integration, not necessary for raw usage
+		#if ROS_WORLD_TO_GRID_CONVERSION == 1
+		float world_scale; 
+		float world_angle;
+		float world_origin_x;
+		float world_origin_y;
+		float world_sin_angle;
+		float world_cos_angle;
 		#endif
 
 		OMap(int w, int h) : width(w), height(h), fn(""), has_error(false) {
@@ -420,14 +431,117 @@ namespace ranges {
 		// call overhead by passing it a numpy array pointer. Indexing assumes a 3xn numpy array
 		// for the inputs and a 1xn numpy array of the outputs
 		void numpy_calc_range(float * ins, float * outs, int num_casts) {
+			#if ROS_WORLD_TO_GRID_CONVERSION == 1
+			// cache these constants on the stack for efficiency
+			float inv_world_scale = 1.0 / map.world_scale; 
+			float world_scale = map.world_scale; 
+			float world_angle = map.world_angle;
+			float world_origin_x = map.world_origin_x;
+			float world_origin_y = map.world_origin_y;
+			float world_sin_angle = map.world_sin_angle;
+			float world_cos_angle = map.world_cos_angle;
+
+			float rotation_const = -1.0 * world_angle - 3.0*M_PI / 2.0;
+
+			// avoid allocation on every loop iteration
+			float x_world;
+			float y_world;
+			float theta_world;
+			float x;
+			float y;
+			float temp;
+			float theta;
+
+			#endif
+
 			for (int i = 0; i < num_casts; ++i) {
+				#if ROS_WORLD_TO_GRID_CONVERSION == 1
+				x_world = ins[i];
+				y_world = ins[i+num_casts];
+				theta_world = ins[i+num_casts*2];
+
+				x = (x_world - world_origin_x) * inv_world_scale;
+				y = (y_world - world_origin_y) * inv_world_scale;
+				temp = x;
+				x = world_cos_angle*x - world_sin_angle*y;
+				y = world_sin_angle*temp + world_cos_angle*y;
+
+				// theta = -theta_world - world_angle - 3.0*M_PI / 2.0;
+				theta = -theta_world + rotation_const;
+
+				// -t-(3.0*np.pi/2.0)
+				// std::cout << "x: " << x << "  y: " << y << "  t: " << theta << std::endl;
+				// outs[i] = calc_range(x, y, theta);
+				outs[i] = calc_range(y, x, theta) * world_scale;
+				#else
 				outs[i] = calc_range(ins[i], ins[i+num_casts], ins[i+num_casts*2]);
+				#endif
 			}
 		}
+
+		#if SENSOR_MODEL_HELPERS == 1
+		void set_sensor_model(double *table, int table_width) {
+			// convert the sensor model from a numpy array to a vector array
+			for (int i = 0; i < table_width; ++i)
+			{
+				std::vector<double> table_row;
+				for (int j = 0; j < table_width; ++j)
+				{
+					table_row.push_back(table[table_width*i + j]);
+				}
+				sensor_model.push_back(table_row);
+			}
+		}
+		void eval_sensor_model(float * obs, float * ranges, double * outs, int rays_per_particle, int particles) {
+			float inv_world_scale = 1.0 / map.world_scale;
+			// do no allocations in the main loop
+			double weight;
+			float r;
+			float d;
+			int i;
+			int j;
+
+			for (i = 0; i < particles; ++i)
+			{
+				weight = 1.0;
+				for (j = 0; j < rays_per_particle; ++j)
+				{
+					r = obs[j] * inv_world_scale;
+					r = std::min<float>(std::max<float>(r,0.0),(float)sensor_model.size()-1.0);
+					d = ranges[i*rays_per_particle+j] * inv_world_scale;
+					d = std::min<float>(std::max<float>(d,0.0),(float)sensor_model.size()-1.0);
+					weight *= sensor_model[(int)r][(int)d];
+				}
+				outs[i] = weight;
+			}
+
+			// for (int i = 0; i < particles; ++i)
+			// {
+			// 	outs[i] = 1.0;
+			// }
+
+			// for (j = 0; j < rays_per_particle; ++j)
+			// {
+			// 	r = obs[j] * inv_world_scale;
+			// 	r = std::min<float>(std::max<float>(r,0.0),(float)sensor_model.size()-1.0);
+			// 	std::vector<double> * model_row = &sensor_model[(int)r];
+			// 	for (i = 0; i < particles; ++i)
+			// 	{
+			// 		d = ranges[i*rays_per_particle+j] * inv_world_scale;
+			// 		d = std::min<float>(std::max<float>(d,0.0),(float)sensor_model.size()-1.0);
+			// 		outs[i] *= (*model_row)[(int)d];
+			// 	}
+			// }
+		}
+		#endif
 	
 	protected:
 		OMap map;
 		float max_range;
+
+		#if SENSOR_MODEL_HELPERS == 1
+		std::vector<std::vector<double> > sensor_model;
+		#endif
 	};
 
 	class BresenhamsLine : public RangeMethod
@@ -513,7 +627,7 @@ namespace ranges {
 		int memory() { return map.memory(); }
 	};
 
-	#ifdef USE_CUDA
+	#if USE_CUDA == 1
 	class RayMarchingGPU : public RangeMethod
 	{
 	public:

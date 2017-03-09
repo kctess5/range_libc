@@ -313,7 +313,7 @@ int main(int argc, char *argv[])
 	}
 
 	if (utils::has("RayMarchingGPU", methods) || utils::has("rmgpu", methods)) {
-		#ifdef USE_CUDA
+		#if USE_CUDA == 1
 		std::cout << "\n...Loading range method: RayMarchingGPU" << std::endl;
 		auto construction_start = std::chrono::high_resolution_clock::now();
 		RayMarchingGPU rmgpu = RayMarchingGPU(map, MAX_DISTANCE);

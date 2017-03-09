@@ -5,6 +5,11 @@ import numpy as np
 cimport numpy as np
 from cython.operator cimport dereference as deref
 
+USE_ROS_MAP = True
+if USE_ROS_MAP:
+    from nav_msgs.msg import OccupancyGrid
+    import tf.transformations
+
 cdef extern from "includes/RangeLib.h":
     # define flags
     cdef bool _USE_CACHED_TRIG "_USE_CACHED_TRIG"
@@ -14,6 +19,8 @@ cdef extern from "includes/RangeLib.h":
     cdef bool _NO_INLINE "_NO_INLINE"
     cdef bool _USE_LRU_CACHE "_USE_LRU_CACHE"
     cdef int  _LRU_CACHE_SIZE "_LRU_CACHE_SIZE"
+    cdef bool _MAKE_TRACE_MAP "_MAKE_TRACE_MAP"
+    cdef bool USE_CUDA "USE_CUDA"
 
 cdef extern from "includes/RangeLib.h" namespace "ranges":
     cdef cppclass OMap:
@@ -26,23 +33,50 @@ cdef extern from "includes/RangeLib.h" namespace "ranges":
         bool save(string filename)
         bool error()
         bool get(int x, int y)
+
+        # constants for coordinate space conversion
+        float world_scale 
+        float world_angle
+        float world_origin_x
+        float world_origin_y
+        float world_sin_angle
+        float world_cos_angle
+
     cdef cppclass BresenhamsLine:
         BresenhamsLine(OMap m, float mr)
         float calc_range(float x, float y, float heading)
         void numpy_calc_range(float * ins, float * outs, int num_casts)
+        bool saveTrace(string filename)
+        void eval_sensor_model(float * obs, float * ranges, double * outs, int rays_per_particle, int particles)
+        void set_sensor_model(double * table, int width)
     cdef cppclass RayMarching:
         RayMarching(OMap m, float mr)
         float calc_range(float x, float y, float heading)
         void numpy_calc_range(float * ins, float * outs, int num_casts)
+        void eval_sensor_model(float * obs, float * ranges, double * outs, int rays_per_particle, int particles)
+        void set_sensor_model(double * table, int width)
     cdef cppclass CDDTCast:
         CDDTCast(OMap m, float mr, unsigned int td)
         float calc_range(float x, float y, float heading)
         void prune(float max_range)
         void numpy_calc_range(float * ins, float * outs, int num_casts)
+        void eval_sensor_model(float * obs, float * ranges, double * outs, int rays_per_particle, int particles)
+        void set_sensor_model(double * table, int width)
     cdef cppclass GiantLUTCast:
         GiantLUTCast(OMap m, float mr, unsigned int td)
         float calc_range(float x, float y, float heading)
         void numpy_calc_range(float * ins, float * outs, int num_casts)
+        void eval_sensor_model(float * obs, float * ranges, double * outs, int rays_per_particle, int particles)
+        void set_sensor_model(double * table, int width)
+    
+    # you can only use this if USE_CUDA is true
+    cdef cppclass RayMarchingGPU:
+        RayMarchingGPU(OMap m, float mr)
+        float calc_range(float x, float y, float heading)
+        void numpy_calc_range(float * ins, float * outs, int num_casts)
+        void eval_sensor_model(float * obs, float * ranges, double * outs, int rays_per_particle, int particles)
+        void set_sensor_model(double * table, int width)
+
 
 # define flags
 USE_CACHED_TRIG = _USE_CACHED_TRIG
@@ -52,7 +86,7 @@ USE_FAST_ROUND = _USE_FAST_ROUND
 NO_INLINE = _NO_INLINE
 USE_LRU_CACHE = _USE_LRU_CACHE
 LRU_CACHE_SIZE = _LRU_CACHE_SIZE
-
+SHOULD_USE_CUDA = USE_CUDA
 
 '''
 Docs:
@@ -72,6 +106,14 @@ PyOMap: wraps OMap class
 
 '''
 
+def quaternion_to_angle(q):
+    """Convert a quaternion _message_ into an angle in radians.
+    The angle represents the yaw.
+    This is not just the z component of the quaternion."""
+    x, y, z, w = q.x, q.y, q.z, q.w
+    roll, pitch, yaw = tf.transformations.euler_from_quaternion((x, y, z, w))
+    return yaw
+
 cdef class PyOMap:
     cdef OMap *thisptr      # hold a C++ instance which we're wrapping
     def __cinit__(self, arg1, arg2=None):
@@ -87,6 +129,27 @@ cdef class PyOMap:
                 for y in xrange(height):
                     for x in xrange(width):
                         self.thisptr.grid[x][y] = <bool>arg1[y,x]
+            elif USE_ROS_MAP and isinstance(arg1, OccupancyGrid):
+                map_msg = arg1
+                width, height = map_msg.info.width, map_msg.info.height
+                self.thisptr = new OMap(<int>height,<int>width)
+
+                # 0: permissible, -1: unmapped, 100: blocked
+                array_255 = np.array(map_msg.data).reshape((height, width))
+
+                for y in xrange(height):
+                    for x in xrange(width):
+                        if array_255[x,y] > 10:
+                            self.thisptr.grid[x][y] = True
+
+                # cache constants for coordinate space conversion
+                angle = -1.0*quaternion_to_angle(map_msg.info.origin.orientation)
+                self.thisptr.world_scale = map_msg.info.resolution
+                self.thisptr.world_angle = angle
+                self.thisptr.world_origin_x = map_msg.info.origin.position.x
+                self.thisptr.world_origin_y = map_msg.info.origin.position.y
+                self.thisptr.world_sin_angle = np.sin(angle)
+                self.thisptr.world_cos_angle = np.cos(angle)
             else:
                 self.thisptr = new OMap(arg1)
         else:
@@ -119,8 +182,17 @@ cdef class PyBresenhamsLine:
         del self.thisptr
     cpdef float calc_range(self, float x, float y, float heading):
         return self.thisptr.calc_range(x, y, heading)
-    cpdef void calc_range_np(self,np.ndarray[float, ndim=2, mode="c"] ins, np.ndarray[float, ndim=1, mode="c"] outs):
+    cpdef void calc_range_many(self,np.ndarray[float, ndim=2, mode="c"] ins, np.ndarray[float, ndim=1, mode="c"] outs):
         self.thisptr.numpy_calc_range(&ins[0,0], &outs[0], outs.shape[0])
+    cpdef float save_trace(self, string path):
+        self.thisptr.saveTrace(path)
+    cpdef void eval_sensor_model(self, np.ndarray[float, ndim=1, mode="c"] observation, np.ndarray[float, ndim=1, mode="c"] ranges, np.ndarray[double, ndim=1, mode="c"] outs, int num_rays, int num_particles):
+        self.thisptr.eval_sensor_model(&observation[0],&ranges[0], &outs[0], num_rays, num_particles)
+    cpdef void set_sensor_model(self, np.ndarray[double, ndim=2, mode="c"] table):
+        if not table.shape[0] == table.shape[1]:
+            print "Sensor model must have equal matrix dimensions, failing!"
+            return
+        self.thisptr.set_sensor_model(&table[0,0], table.shape[0])
 
 cdef class PyRayMarching:
     cdef RayMarching *thisptr      # hold a C++ instance which we're wrapping
@@ -130,8 +202,15 @@ cdef class PyRayMarching:
         del self.thisptr
     cpdef float calc_range(self, float x, float y, float heading):
         return self.thisptr.calc_range(x, y, heading)
-    cpdef void calc_range_np(self,np.ndarray[float, ndim=2, mode="c"] ins, np.ndarray[float, ndim=1, mode="c"] outs):
+    cpdef void calc_range_many(self,np.ndarray[float, ndim=2, mode="c"] ins, np.ndarray[float, ndim=1, mode="c"] outs):
         self.thisptr.numpy_calc_range(&ins[0,0], &outs[0], outs.shape[0])
+    cpdef void eval_sensor_model(self, np.ndarray[float, ndim=1, mode="c"] observation, np.ndarray[float, ndim=1, mode="c"] ranges, np.ndarray[double, ndim=1, mode="c"] outs, int num_rays, int num_particles):
+        self.thisptr.eval_sensor_model(&observation[0],&ranges[0], &outs[0], num_rays, num_particles)
+    cpdef void set_sensor_model(self, np.ndarray[double, ndim=2, mode="c"] table):
+        if not table.shape[0] == table.shape[1]:
+            print "Sensor model must have equal matrix dimensions, failing!"
+            return
+        self.thisptr.set_sensor_model(&table[0,0], table.shape[0])
 
 cdef class PyCDDTCast:
     cdef CDDTCast *thisptr      # hold a C++ instance which we're wrapping
@@ -148,8 +227,15 @@ cdef class PyCDDTCast:
             self.thisptr.prune(max_range)
     cpdef float calc_range(self, float x, float y, float heading):
         return self.thisptr.calc_range(x, y, heading)
-    cpdef void calc_range_np(self,np.ndarray[float, ndim=2, mode="c"] ins, np.ndarray[float, ndim=1, mode="c"] outs):
+    cpdef void calc_range_many(self,np.ndarray[float, ndim=2, mode="c"] ins, np.ndarray[float, ndim=1, mode="c"] outs):
         self.thisptr.numpy_calc_range(&ins[0,0], &outs[0], outs.shape[0])
+    cpdef void eval_sensor_model(self, np.ndarray[float, ndim=1, mode="c"] observation, np.ndarray[float, ndim=1, mode="c"] ranges, np.ndarray[double, ndim=1, mode="c"] outs, int num_rays, int num_particles):
+        self.thisptr.eval_sensor_model(&observation[0],&ranges[0], &outs[0], num_rays, num_particles)
+    cpdef void set_sensor_model(self, np.ndarray[double, ndim=2, mode="c"] table):
+        if not table.shape[0] == table.shape[1]:
+            print "Sensor model must have equal matrix dimensions, failing!"
+            return
+        self.thisptr.set_sensor_model(&table[0,0], table.shape[0])
 
 cdef class PyGiantLUTCast:
     cdef GiantLUTCast *thisptr      # hold a C++ instance which we're wrapping
@@ -159,8 +245,44 @@ cdef class PyGiantLUTCast:
         del self.thisptr
     cpdef float calc_range(self, float x, float y, float heading):
         return self.thisptr.calc_range(x, y, heading)
-    cpdef void calc_range_np(self,np.ndarray[float, ndim=2, mode="c"] ins, np.ndarray[float, ndim=1, mode="c"] outs):
+    cpdef void calc_range_many(self,np.ndarray[float, ndim=2, mode="c"] ins, np.ndarray[float, ndim=1, mode="c"] outs):
         self.thisptr.numpy_calc_range(&ins[0,0], &outs[0], outs.shape[0])
+    cpdef void eval_sensor_model(self, np.ndarray[float, ndim=1, mode="c"] observation, np.ndarray[float, ndim=1, mode="c"] ranges, np.ndarray[double, ndim=1, mode="c"] outs, int num_rays, int num_particles):
+        self.thisptr.eval_sensor_model(&observation[0],&ranges[0], &outs[0], num_rays, num_particles)
+    cpdef void set_sensor_model(self, np.ndarray[double, ndim=2, mode="c"] table):
+        if not table.shape[0] == table.shape[1]:
+            print "Sensor model must have equal matrix dimensions, failing!"
+            return
+        self.thisptr.set_sensor_model(&table[0,0], table.shape[0])
+
+
+# cdef class PyCDDTCast:
+#     cdef RayMarchingGPU *thisptr      # hold a C++ instance which we're wrapping
+#     cdef float max_range
+#     def __cinit__(self, PyOMap Map, float max_range, unsigned int theta_disc):
+#         if SHOULD_USE_CUDA == False:
+#             print "CANNOT USE RayMarchingGPU - must compile RangeLib with USE_CUDA=1"
+#             return 0
+#         self.max_range = max_range
+#         self.thisptr = new RayMarchingGPU(deref(Map.thisptr), max_range)
+#     def __dealloc__(self):
+#         del self.thisptr
+#     cpdef void prune(self, float max_range=-1.0):
+#         if max_range < 0.0:
+#             self.thisptr.prune(self.max_range)
+#         else:
+#             self.thisptr.prune(max_range)
+#     cpdef float calc_range(self, float x, float y, float heading):
+#         return self.thisptr.calc_range(x, y, heading)
+#     cpdef void calc_range_many(self,np.ndarray[float, ndim=2, mode="c"] ins, np.ndarray[float, ndim=1, mode="c"] outs):
+#         self.thisptr.numpy_calc_range(&ins[0,0], &outs[0], outs.shape[0])
+#     cpdef void eval_sensor_model(self, np.ndarray[float, ndim=1, mode="c"] observation, np.ndarray[float, ndim=1, mode="c"] ranges, np.ndarray[double, ndim=1, mode="c"] outs, int num_rays, int num_particles):
+#         self.thisptr.eval_sensor_model(&observation[0],&ranges[0], &outs[0], num_rays, num_particles)
+#     cpdef void set_sensor_model(self, np.ndarray[double, ndim=2, mode="c"] table):
+#         if not table.shape[0] == table.shape[1]:
+#             print "Sensor model must have equal matrix dimensions, failing!"
+#             return
+#         self.thisptr.set_sensor_model(&table[0,0], table.shape[0])
 
 cdef class PyNull:
     def __cinit__(self, PyOMap Map, float max_range, unsigned int theta_disc):
@@ -169,7 +291,7 @@ cdef class PyNull:
         pass
     cpdef float calc_range(self, float x, float y, float heading):
         return x + y + heading
-    cpdef void calc_range_np(self,np.ndarray[float, ndim=2, mode="c"] ins, np.ndarray[float, ndim=1, mode="c"] outs):
+    cpdef void calc_range_many(self,np.ndarray[float, ndim=2, mode="c"] ins, np.ndarray[float, ndim=1, mode="c"] outs):
         a = ins[0,0]
         b = outs[0]
         c = outs.shape[0]
