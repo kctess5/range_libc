@@ -44,6 +44,8 @@ Useful Links: https://github.com/MRPT/mrpt/blob/4137046479222f3a71b5c00aee1d5fa8
 #include <set>
 #include <iomanip>      // std::setw
 #include <unistd.h>
+// #include <exception>
+#include <stdexcept>
 #include <sstream>
 // #define NDEBUG
 #include <cassert>
@@ -109,6 +111,18 @@ Useful Links: https://github.com/MRPT/mrpt/blob/4137046479222f3a71b5c00aee1d5fa8
 #else
 	#define USE_CUDA 0
 #endif
+
+// class NotImplementedException : public std::logic_error
+// {
+// public:
+//     virtual char const * what() const { return "Function not yet implemented."; }
+// };
+
+// class NotUsableException : public std::logic_error
+// {
+// public:
+//     virtual char const * what() const { return "Cannot use this function with the current compilation flags."; }
+// };
 
 
 namespace ranges {
@@ -479,6 +493,51 @@ namespace ranges {
 			}
 		}
 
+		void numpy_calc_range_angles(float * ins, float * angles, float * outs, int num_particles, int num_angles) {
+			#if ROS_WORLD_TO_GRID_CONVERSION == 1
+			// cache these constants on the stack for efficiency
+			float inv_world_scale = 1.0 / map.world_scale; 
+			float world_scale = map.world_scale; 
+			float world_angle = map.world_angle;
+			float world_origin_x = map.world_origin_x;
+			float world_origin_y = map.world_origin_y;
+			float world_sin_angle = map.world_sin_angle;
+			float world_cos_angle = map.world_cos_angle;
+
+			float rotation_const = -1.0 * world_angle - 3.0*M_PI / 2.0;
+
+			// avoid allocation on every loop iteration
+			float x_world;
+			float y_world;
+			float theta_world;
+			float x;
+			float y;
+			float temp;
+			float theta;
+
+			#endif
+
+			for (int i = 0; i < num_particles; ++i)
+			{
+				x_world = ins[i];
+				y_world = ins[i+num_particles];
+				theta_world = ins[i+num_particles*2];
+
+				theta = -theta_world + rotation_const;
+
+				x = (x_world - world_origin_x) * inv_world_scale;
+				y = (y_world - world_origin_y) * inv_world_scale;
+				temp = x;
+				x = world_cos_angle*x - world_sin_angle*y;
+				y = world_sin_angle*temp + world_cos_angle*y;
+
+				for (int a = 0; a < num_angles; ++a)
+				{
+					outs[i*num_angles+a] = calc_range(y, x, theta - angles[a]) * world_scale;
+				}
+			}
+		}
+
 		#if SENSOR_MODEL_HELPERS == 1
 		void set_sensor_model(double *table, int table_width) {
 			// convert the sensor model from a numpy array to a vector array
@@ -627,25 +686,38 @@ namespace ranges {
 		int memory() { return map.memory(); }
 	};
 
-	#if USE_CUDA == 1
+	
 	class RayMarchingGPU : public RangeMethod
 	{
 	public:
 		RayMarchingGPU(OMap m, float mr) : RangeMethod(m, mr) { 
 			distImage = new DistanceTransform(&m);
+			#if USE_CUDA == 1
 			rmc = new RayMarchingCUDA(distImage->grid, distImage->width, distImage->height, max_range);
+			#else
+			throw std::string("Must compile with -DWITH_CUDA=ON to use this class.");
+			#endif
 		}
 		~RayMarchingGPU() {
-			delete rmc;
 			delete distImage;
+			#if USE_CUDA == 1
+			delete rmc;
+			#else
+			throw std::string("Must compile with -DWITH_CUDA=ON to use this class.");
+			#endif
 		};
 
 		float calc_range(float x, float y, float heading) {
+			#if USE_CUDA == 1
 			std::cout << "Do not call calc_range on RayMarchingGPU, requires batched queries with calc_range_many" << std::endl;
 			return -1.0;
+			#else
+			throw std::string("Must compile with -DWITH_CUDA=ON to use this class.");
+			#endif
 		}
 
 		void calc_range_many(float *ins, float *outs, int num_casts) {
+			#if USE_CUDA == 1
 			if (!(num_casts % CHUNK_SIZE == 0) && !already_warned) {
 				std::cout << "\nFor better performance, call calc_range_many with some multiple of " << CHUNK_SIZE << " queries. ";
 				std::cout << "You can change the chunk size with -DCHUNK_SIZE=[integer].\n" << std::endl;
@@ -658,15 +730,20 @@ namespace ranges {
 				if (i == iters - 1) num_in_chunk = num_casts-i*CHUNK_SIZE;
 				rmc->calc_range_many(&ins[i*CHUNK_SIZE*3],&outs[i*CHUNK_SIZE],num_in_chunk);
 			}
+			#else
+			throw std::string("Must compile with -DWITH_CUDA=ON to use this class.");
+			#endif
 		}
 	
 		int memory() { return distImage->memory(); }
 	protected:
 		DistanceTransform *distImage = 0;
+		#if USE_CUDA == 1
 		RayMarchingCUDA * rmc = 0;
+		#endif
 		bool already_warned = false;
 	};
-	#endif
+	// #endif
 
 	class RayMarching : public RangeMethod
 	{
