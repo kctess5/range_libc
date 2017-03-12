@@ -50,6 +50,7 @@ cdef extern from "includes/RangeLib.h" namespace "ranges":
         void eval_sensor_model(float * obs, float * ranges, double * outs, int rays_per_particle, int particles)
         void set_sensor_model(double * table, int width)
         void numpy_calc_range_angles(float * ins, float * angles, float * outs, int num_casts, int num_angles)
+        void calc_range_repeat_angles_eval_sensor_model(float * ins, float * angles, float * obs, double * weights, int num_particles, int num_angles)
     cdef cppclass RayMarching:
         RayMarching(OMap m, float mr)
         float calc_range(float x, float y, float heading)
@@ -57,6 +58,7 @@ cdef extern from "includes/RangeLib.h" namespace "ranges":
         void eval_sensor_model(float * obs, float * ranges, double * outs, int rays_per_particle, int particles)
         void set_sensor_model(double * table, int width)
         void numpy_calc_range_angles(float * ins, float * angles, float * outs, int num_casts, int num_angles)
+        void calc_range_repeat_angles_eval_sensor_model(float * ins, float * angles, float * obs, double * weights, int num_particles, int num_angles)
     cdef cppclass CDDTCast:
         CDDTCast(OMap m, float mr, unsigned int td)
         float calc_range(float x, float y, float heading)
@@ -65,6 +67,7 @@ cdef extern from "includes/RangeLib.h" namespace "ranges":
         void eval_sensor_model(float * obs, float * ranges, double * outs, int rays_per_particle, int particles)
         void set_sensor_model(double * table, int width)
         void numpy_calc_range_angles(float * ins, float * angles, float * outs, int num_casts, int num_angles)
+        void calc_range_repeat_angles_eval_sensor_model(float * ins, float * angles, float * obs, double * weights, int num_particles, int num_angles)
     cdef cppclass GiantLUTCast:
         GiantLUTCast(OMap m, float mr, unsigned int td)
         float calc_range(float x, float y, float heading)
@@ -72,16 +75,19 @@ cdef extern from "includes/RangeLib.h" namespace "ranges":
         void eval_sensor_model(float * obs, float * ranges, double * outs, int rays_per_particle, int particles)
         void set_sensor_model(double * table, int width)
         void numpy_calc_range_angles(float * ins, float * angles, float * outs, int num_casts, int num_angles)
-    
+        void calc_range_repeat_angles_eval_sensor_model(float * ins, float * angles, float * obs, double * weights, int num_particles, int num_angles)
     # you can only use this if USE_CUDA is true
     cdef cppclass RayMarchingGPU:
         RayMarchingGPU(OMap m, float mr)
-        float calc_range(float x, float y, float heading)
+        # this one does not do coordinate space conversion
+        void calc_range_many(float * ins, float * outs, int num_casts)
+        # these do
         void numpy_calc_range(float * ins, float * outs, int num_casts)
+        void numpy_calc_range_angles(float * ins, float * angles, float * outs, int num_casts, int num_angles)
         void eval_sensor_model(float * obs, float * ranges, double * outs, int rays_per_particle, int particles)
         void set_sensor_model(double * table, int width)
-        void numpy_calc_range_angles(float * ins, float * angles, float * outs, int num_casts, int num_angles)
-
+        # void numpy_calc_range_angles(float * ins, float * angles, float * outs, int num_casts, int num_angles)
+        void calc_range_repeat_angles_eval_sensor_model(float * ins, float * angles, float * obs, double * weights, int num_particles, int num_angles)
 
 # define flags
 USE_CACHED_TRIG = _USE_CACHED_TRIG
@@ -191,7 +197,10 @@ cdef class PyBresenhamsLine:
         self.thisptr.numpy_calc_range(&ins[0,0], &outs[0], outs.shape[0])
     
     cpdef void calc_range_repeat_angles(self,np.ndarray[float, ndim=2, mode="c"] ins,np.ndarray[float, ndim=1, mode="c"] angles, np.ndarray[float, ndim=1, mode="c"] outs):
-        self.thisptr.numpy_calc_range_angles(&ins[0,0], &angles[0], &outs[0], ins.shape[1], angles.shape[0])
+        self.thisptr.numpy_calc_range_angles(&ins[0,0], &angles[0], &outs[0], ins.shape[0], angles.shape[0])
+
+    cpdef void calc_range_repeat_angles_eval_sensor_model(self,np.ndarray[float, ndim=2, mode="c"] ins,np.ndarray[float, ndim=1, mode="c"] angles, np.ndarray[float, ndim=1, mode="c"] obs, np.ndarray[double, ndim=1, mode="c"] weights):
+        self.thisptr.calc_range_repeat_angles_eval_sensor_model(&ins[0,0], &angles[0], &obs[0],  &weights[0], ins.shape[0], angles.shape[0])
 
     cpdef float save_trace(self, string path):
         self.thisptr.saveTrace(path)
@@ -215,7 +224,10 @@ cdef class PyRayMarching:
         self.thisptr.numpy_calc_range(&ins[0,0], &outs[0], outs.shape[0])
     
     cpdef void calc_range_repeat_angles(self,np.ndarray[float, ndim=2, mode="c"] ins,np.ndarray[float, ndim=1, mode="c"] angles, np.ndarray[float, ndim=1, mode="c"] outs):
-        self.thisptr.numpy_calc_range_angles(&ins[0,0], &angles[0], &outs[0], ins.shape[1], angles.shape[0])
+        self.thisptr.numpy_calc_range_angles(&ins[0,0], &angles[0], &outs[0], ins.shape[0], angles.shape[0])
+
+    cpdef void calc_range_repeat_angles_eval_sensor_model(self,np.ndarray[float, ndim=2, mode="c"] ins,np.ndarray[float, ndim=1, mode="c"] angles, np.ndarray[float, ndim=1, mode="c"] obs, np.ndarray[double, ndim=1, mode="c"] weights):
+        self.thisptr.calc_range_repeat_angles_eval_sensor_model(&ins[0,0], &angles[0], &obs[0],  &weights[0], ins.shape[0], angles.shape[0])
 
     cpdef void eval_sensor_model(self, np.ndarray[float, ndim=1, mode="c"] observation, np.ndarray[float, ndim=1, mode="c"] ranges, np.ndarray[double, ndim=1, mode="c"] outs, int num_rays, int num_particles):
         self.thisptr.eval_sensor_model(&observation[0],&ranges[0], &outs[0], num_rays, num_particles)
@@ -242,9 +254,12 @@ cdef class PyCDDTCast:
         return self.thisptr.calc_range(x, y, heading)
     cpdef void calc_range_many(self,np.ndarray[float, ndim=2, mode="c"] ins, np.ndarray[float, ndim=1, mode="c"] outs):
         self.thisptr.numpy_calc_range(&ins[0,0], &outs[0], outs.shape[0])
+
+    cpdef void calc_range_repeat_angles_eval_sensor_model(self,np.ndarray[float, ndim=2, mode="c"] ins,np.ndarray[float, ndim=1, mode="c"] angles, np.ndarray[float, ndim=1, mode="c"] obs, np.ndarray[double, ndim=1, mode="c"] weights):
+        self.thisptr.calc_range_repeat_angles_eval_sensor_model(&ins[0,0], &angles[0], &obs[0],  &weights[0], ins.shape[0], angles.shape[0])
     
     cpdef void calc_range_repeat_angles(self,np.ndarray[float, ndim=2, mode="c"] ins,np.ndarray[float, ndim=1, mode="c"] angles, np.ndarray[float, ndim=1, mode="c"] outs):
-        self.thisptr.numpy_calc_range_angles(&ins[0,0], &angles[0], &outs[0], ins.shape[1], angles.shape[0])
+        self.thisptr.numpy_calc_range_angles(&ins[0,0], &angles[0], &outs[0], ins.shape[0], angles.shape[0])
     
     cpdef void eval_sensor_model(self, np.ndarray[float, ndim=1, mode="c"] observation, np.ndarray[float, ndim=1, mode="c"] ranges, np.ndarray[double, ndim=1, mode="c"] outs, int num_rays, int num_particles):
         self.thisptr.eval_sensor_model(&observation[0],&ranges[0], &outs[0], num_rays, num_particles)
@@ -266,7 +281,10 @@ cdef class PyGiantLUTCast:
         self.thisptr.numpy_calc_range(&ins[0,0], &outs[0], outs.shape[0])
     
     cpdef void calc_range_repeat_angles(self,np.ndarray[float, ndim=2, mode="c"] ins,np.ndarray[float, ndim=1, mode="c"] angles, np.ndarray[float, ndim=1, mode="c"] outs):
-        self.thisptr.numpy_calc_range_angles(&ins[0,0], &angles[0], &outs[0], ins.shape[1], angles.shape[0])
+        self.thisptr.numpy_calc_range_angles(&ins[0,0], &angles[0], &outs[0], ins.shape[0], angles.shape[0])
+
+    cpdef void calc_range_repeat_angles_eval_sensor_model(self,np.ndarray[float, ndim=2, mode="c"] ins,np.ndarray[float, ndim=1, mode="c"] angles, np.ndarray[float, ndim=1, mode="c"] obs, np.ndarray[double, ndim=1, mode="c"] weights):
+        self.thisptr.calc_range_repeat_angles_eval_sensor_model(&ins[0,0], &angles[0], &obs[0],  &weights[0], ins.shape[0], angles.shape[0])
 
     cpdef void eval_sensor_model(self, np.ndarray[float, ndim=1, mode="c"] observation, np.ndarray[float, ndim=1, mode="c"] ranges, np.ndarray[double, ndim=1, mode="c"] outs, int num_rays, int num_particles):
         self.thisptr.eval_sensor_model(&observation[0],&ranges[0], &outs[0], num_rays, num_particles)
@@ -275,7 +293,6 @@ cdef class PyGiantLUTCast:
             print "Sensor model must have equal matrix dimensions, failing!"
             return
         self.thisptr.set_sensor_model(&table[0,0], table.shape[0])
-
 
 cdef class PyRayMarchingGPU:
     cdef RayMarchingGPU *thisptr      # hold a C++ instance which we're wrapping
@@ -290,6 +307,13 @@ cdef class PyRayMarchingGPU:
         del self.thisptr
     cpdef void calc_range_many(self,np.ndarray[float, ndim=2, mode="c"] ins, np.ndarray[float, ndim=1, mode="c"] outs):
         self.thisptr.numpy_calc_range(&ins[0,0], &outs[0], outs.shape[0])
+
+    cpdef void calc_range_repeat_angles(self,np.ndarray[float, ndim=2, mode="c"] ins,np.ndarray[float, ndim=1, mode="c"] angles, np.ndarray[float, ndim=1, mode="c"] outs):
+        self.thisptr.numpy_calc_range_angles(&ins[0,0], &angles[0], &outs[0], ins.shape[0], angles.shape[0])
+
+    cpdef void calc_range_repeat_angles_eval_sensor_model(self,np.ndarray[float, ndim=2, mode="c"] ins,np.ndarray[float, ndim=1, mode="c"] angles, np.ndarray[float, ndim=1, mode="c"] obs, np.ndarray[double, ndim=1, mode="c"] weights):
+        self.thisptr.calc_range_repeat_angles_eval_sensor_model(&ins[0,0], &angles[0], &obs[0],  &weights[0], ins.shape[0], angles.shape[0])
+    
     cpdef void eval_sensor_model(self, np.ndarray[float, ndim=1, mode="c"] observation, np.ndarray[float, ndim=1, mode="c"] ranges, np.ndarray[double, ndim=1, mode="c"] outs, int num_rays, int num_particles):
         self.thisptr.eval_sensor_model(&observation[0],&ranges[0], &outs[0], num_rays, num_particles)
     cpdef void set_sensor_model(self, np.ndarray[double, ndim=2, mode="c"] table):

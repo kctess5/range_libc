@@ -57,7 +57,7 @@ if (WITH_CUDA)
 		"includes/kernels.cu"
 		"vendor/lodepng/lodepng.cpp" )
 
-	set(CUDA_TOOLKIT_ROOT_DIR "/usr/local/cuda-7.5")
+	# set(CUDA_TOOLKIT_ROOT_DIR "/usr/local/cuda-7.5")
 	find_package(CUDA REQUIRED)
 	cuda_add_executable(range_lib ${CUDA_SRCS})
 	# message(${CUDA_VERSION})

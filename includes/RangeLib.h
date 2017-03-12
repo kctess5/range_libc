@@ -107,23 +107,14 @@ Useful Links: https://github.com/MRPT/mrpt/blob/4137046479222f3a71b5c00aee1d5fa8
 #define J4 J2 J2
 
 #if USE_CUDA == 1
+	#ifndef CHUNK_SIZE 
+	#define CHUNK_SIZE 262144
+	#define CHUNK_THREADS 256
+	#endif
 	#include "includes/CudaRangeLib.h"
 #else
 	#define USE_CUDA 0
 #endif
-
-// class NotImplementedException : public std::logic_error
-// {
-// public:
-//     virtual char const * what() const { return "Function not yet implemented."; }
-// };
-
-// class NotUsableException : public std::logic_error
-// {
-// public:
-//     virtual char const * what() const { return "Cannot use this function with the current compilation flags."; }
-// };
-
 
 namespace ranges {
 	struct OMap
@@ -202,9 +193,6 @@ namespace ranges {
 					int g = image[idx + 1];
 					int b = image[idx + 0];
 					int gray = (int) utils::rgb2gray(r,g,b);
-
-					// std::cout << gray << std::endl;
-
 					if (gray < threshold) grid[x][y] = true;
 					raw_grid[x][y] = gray;
 				}
@@ -302,7 +290,6 @@ namespace ranges {
 
 		OMap make_edge_map(bool count_corners) {
 			OMap edge_map = OMap(width, height);
-			// int occupied = 0;
 			for (int x = 0; x < width; ++x) {
 				for (int y = 0; y < height; ++y) {
 					if (!isOccupiedNT(x,y)) continue;
@@ -328,7 +315,6 @@ namespace ranges {
 
 		// returns memory usage in bytes
 		int memory() {
-			// std::cout << sizeof(bool) * width * height << std::endl;
 			return sizeof(bool) * width * height;
 		}
 	};
@@ -367,9 +353,7 @@ namespace ranges {
 		        	if (map->isOccupied(i,j)) f[i][j] = 0.0f;
 		        	else f[i][j] = std::numeric_limits<float>::max();
 		    
-		    // dt::DistanceTransform::initializeIndices(indices);  // this is not necessary, since distanceTransformL2() already does it
 			dt::DistanceTransform::distanceTransformL2(f, f, indices, false);
-
 
 			// allocate space in the vectors
 			for (int i = 0; i < width; ++i) {
@@ -388,7 +372,7 @@ namespace ranges {
 
 		bool save(std::string filename) {
 			std::vector<unsigned char> png;
-			lodepng::State state; //optionally customize this one
+			lodepng::State state; 
 			char image[width * height * 4];
 
 			float scale = 0;
@@ -465,30 +449,24 @@ namespace ranges {
 			float y;
 			float temp;
 			float theta;
-
 			#endif
 
 			for (int i = 0; i < num_casts; ++i) {
 				#if ROS_WORLD_TO_GRID_CONVERSION == 1
-				x_world = ins[i];
-				y_world = ins[i+num_casts];
-				theta_world = ins[i+num_casts*2];
+				x_world = ins[i*3];
+				y_world = ins[i*3+1];
+				theta_world = ins[i*3+2];
 
 				x = (x_world - world_origin_x) * inv_world_scale;
 				y = (y_world - world_origin_y) * inv_world_scale;
 				temp = x;
 				x = world_cos_angle*x - world_sin_angle*y;
 				y = world_sin_angle*temp + world_cos_angle*y;
-
-				// theta = -theta_world - world_angle - 3.0*M_PI / 2.0;
 				theta = -theta_world + rotation_const;
 
-				// -t-(3.0*np.pi/2.0)
-				// std::cout << "x: " << x << "  y: " << y << "  t: " << theta << std::endl;
-				// outs[i] = calc_range(x, y, theta);
 				outs[i] = calc_range(y, x, theta) * world_scale;
 				#else
-				outs[i] = calc_range(ins[i], ins[i+num_casts], ins[i+num_casts*2]);
+				outs[i] = calc_range(ins[i*3], ins[i*3+1], ins[i*3+2]);
 				#endif
 			}
 		}
@@ -503,7 +481,6 @@ namespace ranges {
 			float world_origin_y = map.world_origin_y;
 			float world_sin_angle = map.world_sin_angle;
 			float world_cos_angle = map.world_cos_angle;
-
 			float rotation_const = -1.0 * world_angle - 3.0*M_PI / 2.0;
 
 			// avoid allocation on every loop iteration
@@ -514,15 +491,13 @@ namespace ranges {
 			float y;
 			float temp;
 			float theta;
-
 			#endif
 
 			for (int i = 0; i < num_particles; ++i)
 			{
-				x_world = ins[i];
-				y_world = ins[i+num_particles];
-				theta_world = ins[i+num_particles*2];
-
+				x_world = ins[i*3];
+				y_world = ins[i*3+1];
+				theta_world = ins[i*3+2];
 				theta = -theta_world + rotation_const;
 
 				x = (x_world - world_origin_x) * inv_world_scale;
@@ -532,9 +507,7 @@ namespace ranges {
 				y = world_sin_angle*temp + world_cos_angle*y;
 
 				for (int a = 0; a < num_angles; ++a)
-				{
 					outs[i*num_angles+a] = calc_range(y, x, theta - angles[a]) * world_scale;
-				}
 			}
 		}
 
@@ -545,9 +518,7 @@ namespace ranges {
 			{
 				std::vector<double> table_row;
 				for (int j = 0; j < table_width; ++j)
-				{
 					table_row.push_back(table[table_width*i + j]);
-				}
 				sensor_model.push_back(table_row);
 			}
 		}
@@ -573,24 +544,63 @@ namespace ranges {
 				}
 				outs[i] = weight;
 			}
+		}
 
-			// for (int i = 0; i < particles; ++i)
-			// {
-			// 	outs[i] = 1.0;
-			// }
+		// calc range for each pose, adding every angle, evaluating the sensor model
+		void calc_range_repeat_angles_eval_sensor_model(float * ins, float * angles, float * obs, double * weights, int num_particles, int num_angles) {
+			#if ROS_WORLD_TO_GRID_CONVERSION == 1
+			// cache these constants on the stack for efficiency
+			float inv_world_scale = 1.0 / map.world_scale; 
+			float world_scale = map.world_scale; 
+			float world_angle = map.world_angle;
+			float world_origin_x = map.world_origin_x;
+			float world_origin_y = map.world_origin_y;
+			float world_sin_angle = map.world_sin_angle;
+			float world_cos_angle = map.world_cos_angle;
+			float rotation_const = -1.0 * world_angle - 3.0*M_PI / 2.0;
 
-			// for (j = 0; j < rays_per_particle; ++j)
-			// {
-			// 	r = obs[j] * inv_world_scale;
-			// 	r = std::min<float>(std::max<float>(r,0.0),(float)sensor_model.size()-1.0);
-			// 	std::vector<double> * model_row = &sensor_model[(int)r];
-			// 	for (i = 0; i < particles; ++i)
-			// 	{
-			// 		d = ranges[i*rays_per_particle+j] * inv_world_scale;
-			// 		d = std::min<float>(std::max<float>(d,0.0),(float)sensor_model.size()-1.0);
-			// 		outs[i] *= (*model_row)[(int)d];
-			// 	}
-			// }
+			// avoid allocation on every loop iteration
+			float x_world;
+			float y_world;
+			float theta_world;
+			float x;
+			float y;
+			float temp;
+			float theta;
+
+			// do no allocations in the main loop
+			double weight;
+			float r;
+			float d;
+			int i;
+			int a;
+
+			for (i = 0; i < num_particles; ++i)
+			{
+				x_world = ins[i*3];
+				y_world = ins[i*3+1];
+				theta_world = ins[i*3+2];
+				theta = -theta_world + rotation_const;
+
+				x = (x_world - world_origin_x) * inv_world_scale;
+				y = (y_world - world_origin_y) * inv_world_scale;
+				temp = x;
+				x = world_cos_angle*x - world_sin_angle*y;
+				y = world_sin_angle*temp + world_cos_angle*y;
+
+				weight = 1.0;
+				for (a = 0; a < num_angles; ++a)
+				{
+					d = calc_range(y, x, theta - angles[a]);
+					d = std::min<float>(std::max<float>(d,0.0),(float)sensor_model.size()-1.0);
+
+					r = obs[a] * inv_world_scale;
+					r = std::min<float>(std::max<float>(r,0.0),(float)sensor_model.size()-1.0);
+					weight *= sensor_model[(int)r][(int)d];
+				}
+				weights[i] = weight;
+			}
+			#endif
 		}
 		#endif
 	
@@ -686,7 +696,6 @@ namespace ranges {
 		int memory() { return map.memory(); }
 	};
 
-	
 	class RayMarchingGPU : public RangeMethod
 	{
 	public:
@@ -694,6 +703,12 @@ namespace ranges {
 			distImage = new DistanceTransform(&m);
 			#if USE_CUDA == 1
 			rmc = new RayMarchingCUDA(distImage->grid, distImage->width, distImage->height, max_range);
+
+			#if ROS_WORLD_TO_GRID_CONVERSION == 1
+			rmc->set_conversion_params(m.world_scale,m.world_angle,m.world_origin_x, m.world_origin_y, 
+				m.world_sin_angle, m.world_cos_angle);
+			#endif
+
 			#else
 			throw std::string("Must compile with -DWITH_CUDA=ON to use this class.");
 			#endif
@@ -709,22 +724,27 @@ namespace ranges {
 
 		float calc_range(float x, float y, float heading) {
 			#if USE_CUDA == 1
-			std::cout << "Do not call calc_range on RayMarchingGPU, requires batched queries with calc_range_many" << std::endl;
+			std::cout << "Do not call calc_range on RayMarchingGPU, requires batched queries" << std::endl;
 			return -1.0;
 			#else
 			throw std::string("Must compile with -DWITH_CUDA=ON to use this class.");
 			#endif
 		}
 
-		void calc_range_many(float *ins, float *outs, int num_casts) {
+		void maybe_warn(int num_casts) {
 			#if USE_CUDA == 1
 			if (!(num_casts % CHUNK_SIZE == 0) && !already_warned) {
 				std::cout << "\nFor better performance, call calc_range_many with some multiple of " << CHUNK_SIZE << " queries. ";
 				std::cout << "You can change the chunk size with -DCHUNK_SIZE=[integer].\n" << std::endl;
 				already_warned = true;
 			}
-			int iters = std::ceil((float)num_casts / (float)CHUNK_SIZE);
+			#endif
+		}
 
+		void calc_range_many(float *ins, float *outs, int num_casts) {
+			#if USE_CUDA == 1
+			maybe_warn(num_casts);
+			int iters = std::ceil((float)num_casts / (float)CHUNK_SIZE);
 			for (int i = 0; i < iters; ++i) {
 				int num_in_chunk = CHUNK_SIZE;
 				if (i == iters - 1) num_in_chunk = num_casts-i*CHUNK_SIZE;
@@ -734,6 +754,85 @@ namespace ranges {
 			throw std::string("Must compile with -DWITH_CUDA=ON to use this class.");
 			#endif
 		}
+
+		// wrapper function to call calc_range repeatedly with the given array of inputs
+		// and store the result to the given outputs. Useful for avoiding cython function
+		// call overhead by passing it a numpy array pointer. Indexing assumes a 3xn numpy array
+		// for the inputs and a 1xn numpy array of the outputs
+		void numpy_calc_range(float * ins, float * outs, int num_casts) {
+			#if ROS_WORLD_TO_GRID_CONVERSION == 0
+			std::cout << "Cannot use GPU numpy_calc_range without ROS_WORLD_TO_GRID_CONVERSION == 1" << std::endl;
+			return;
+			#endif
+			#if USE_CUDA == 1
+			maybe_warn(num_casts);
+			int iters = std::ceil((float)num_casts / (float)CHUNK_SIZE);
+			for (int i = 0; i < iters; ++i) {
+				int num_in_chunk = CHUNK_SIZE;
+				if (i == iters - 1) num_in_chunk = num_casts-i*CHUNK_SIZE;
+				rmc->numpy_calc_range(&ins[i*CHUNK_SIZE*3],&outs[i*CHUNK_SIZE],num_in_chunk);
+			}
+			#else
+			throw std::string("Must compile with -DWITH_CUDA=ON to use this class.");
+			#endif
+		}
+
+		void numpy_calc_range_angles(float * ins, float * angles, float * outs, int num_particles, int num_angles) {
+			#if ROS_WORLD_TO_GRID_CONVERSION == 0
+			std::cout << "Cannot use GPU numpy_calc_range without ROS_WORLD_TO_GRID_CONVERSION == 1" << std::endl;
+			return;
+			#endif
+			#if USE_CUDA == 1
+			
+			int particles_per_iter = std::ceil((float)CHUNK_SIZE / (float)num_angles);
+			int iters = std::ceil((float)num_particles / (float) particles_per_iter);
+			// must allways do the correct number of angles, can only split on the particles
+			for (int i = 0; i < iters; ++i) {
+				int num_in_chunk = particles_per_iter;
+				if (i == iters - 1) num_in_chunk = num_particles-i*particles_per_iter;
+				rmc->numpy_calc_range_angles(&ins[i*num_in_chunk*3], angles, &outs[i*num_in_chunk*num_angles],
+					num_in_chunk, num_angles);
+			}
+			#else
+			throw std::string("Must compile with -DWITH_CUDA=ON to use this class.");
+			#endif
+		}
+
+		#if SENSOR_MODEL_HELPERS == 1
+		void set_sensor_model(double *table, int table_width) {
+			// convert the sensor model from a numpy array to a vector array
+			for (int i = 0; i < table_width; ++i)
+			{
+				std::vector<double> table_row;
+				for (int j = 0; j < table_width; ++j)
+					table_row.push_back(table[table_width*i + j]);
+				sensor_model.push_back(table_row);
+			}
+
+			rmc->set_sensor_table(table, table_width);
+		}
+
+		// calc range for each pose, adding every angle, evaluating the sensor model
+		void calc_range_repeat_angles_eval_sensor_model(float * ins, float * angles, float * obs, double * weights, int num_particles, int num_angles) {
+			#if ROS_WORLD_TO_GRID_CONVERSION == 0
+			std::cout << "Cannot use GPU numpy_calc_range without ROS_WORLD_TO_GRID_CONVERSION == 1" << std::endl;
+			return;
+			#endif
+			#if USE_CUDA == 1
+			
+			int particles_per_iter = std::ceil((float)CHUNK_SIZE / (float)num_angles);
+			int iters = std::ceil((float)num_particles / (float) particles_per_iter);
+			// must allways do the correct number of angles, can only split on the particles
+			for (int i = 0; i < iters; ++i) {
+				int num_in_chunk = particles_per_iter;
+				if (i == iters - 1) num_in_chunk = num_particles-i*particles_per_iter;
+				rmc->calc_range_repeat_angles_eval_sensor_model(&ins[i*num_in_chunk*3], angles, obs, &weights[i*num_in_chunk],num_in_chunk, num_angles);
+			}
+			#else
+			throw std::string("Must compile with -DWITH_CUDA=ON to use this class.");
+			#endif
+		}
+		#endif
 	
 		int memory() { return distImage->memory(); }
 	protected:
