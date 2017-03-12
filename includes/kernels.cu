@@ -59,17 +59,10 @@ __global__ void cuda_ray_marching_world_to_grid(float * ins, float * outs, float
 	int ind = blockIdx.x*blockDim.x + threadIdx.x;
 	if (ind >= num_casts) return; 
 
-	// would be better to use this memory layout, slightly faster
-	//    0.0009 vs 0.0007 seconds just to read values for 1000 particles
-	//    0.001
 	float x_world = ins[ind*3];
 	float y_world = ins[ind*3+1];
 	float theta_world = ins[ind*3+2];
 	
-	// float x_world = ins[ind];
-	// float y_world = ins[ind+num_casts];
-	// float theta_world = ins[ind+num_casts*2];
-
 	// convert x0,y0,theta from world to grid space coordinates
 	float x0 = (x_world - world_origin_x) * inv_world_scale;
 	float y0 = (y_world - world_origin_y) * inv_world_scale;
@@ -92,7 +85,6 @@ __global__ void cuda_ray_marching_world_to_grid(float * ins, float * outs, float
 
 	float t = 0.0;
 	float out = max_range;
-	// int iters = 0;
 	while (t < max_range) {
 		px = x0 + ray_direction_x * t;
 		py = y0 + ray_direction_y * t;
@@ -112,17 +104,14 @@ __global__ void cuda_ray_marching_world_to_grid(float * ins, float * outs, float
 		}
 
 		t += fmaxf(d * STEP_COEFF, 1.0);
-		// iters ++;
 	}
 	outs[ind] = out * world_scale;
-	// outs[ind] = x_world + theta_world + y_world;
 }
 
 __global__ void cuda_ray_marching_angles_world_to_grid(float * ins, float * outs, float * distMap, int width, int height, float max_range, int num_particles, int num_angles, float world_origin_x, float world_origin_y, float world_scale, float inv_world_scale, float world_sin_angle, float world_cos_angle, float rotation_const) {
 	int ind = blockIdx.x*blockDim.x + threadIdx.x;
 	if (ind >= num_angles*num_particles) return; 
 
-	// int angle_ind = ind % num_angles;
 	int angle_ind = fmodf( ind, num_angles );
 	int particle_ind = (float) ind / (float) num_angles;
 
@@ -152,7 +141,6 @@ __global__ void cuda_ray_marching_angles_world_to_grid(float * ins, float * outs
 
 	float t = 0.0;
 	float out = max_range;
-	// int iters = 0;
 	while (t < max_range) {
 		px = x0 + ray_direction_x * t;
 		py = y0 + ray_direction_y * t;
@@ -170,12 +158,9 @@ __global__ void cuda_ray_marching_angles_world_to_grid(float * ins, float * outs
 			out =  sqrtf(xd*xd + yd*yd);
 			break;
 		}
-
 		t += fmaxf(d * STEP_COEFF, 1.0);
-		// iters ++;
 	}
 	outs[ind] = out * world_scale;
-	// outs[ind] = 1.0;
 }
 
 __device__ int clamp(float val, float min, float max) {
@@ -189,29 +174,12 @@ __global__ void cuda_eval_sensor_table(float * obs, float * ranges, double * out
 	int ind = blockIdx.x*blockDim.x + threadIdx.x;
 	if (ind >= rays_per_particle) return;
 
-	// int angle_ind = fmodf( ind, rays_per_particle );
 	int r = clamp(obs[ind] * inv_world_scale,0,max_range-1.0);
-
 	for (int i = 0; i < particles; ++i)
 	{
 		int d = clamp(ranges[ind + ind * i],0,max_range-1.0);
 		outs[ind+i*rays_per_particle] = sensorTable[r*max_range+d];
 	}
-
-
-	// for (i = 0; i < particles; ++i)
-	// {
-	// 	weight = 1.0;
-	// 	for (j = 0; j < rays_per_particle; ++j)
-	// 	{
-	// 		r = obs[j] * inv_world_scale;
-	// 		r = std::min<float>(std::max<float>(r,0.0),(float)sensor_model.size()-1.0);
-	// 		d = ranges[i*rays_per_particle+j] * inv_world_scale;
-	// 		d = std::min<float>(std::max<float>(d,0.0),(float)sensor_model.size()-1.0);
-	// 		weight *= sensor_model[(int)r][(int)d];
-	// 	}
-	// 	outs[i] = weight;
-	// }
 }
 
 // this should be optimized to use shared memory, otherwise the random read performance is not great
@@ -225,22 +193,6 @@ __global__ void cuda_eval_sensor_table(float * obs, float * ranges, double * out
 // 		weight *= outs[ind*rays_per_particle+i];
 		
 // 	}
-
-// 	outs[ind] = weight;
-
-// 	// for (i = 0; i < particles; ++i)
-// 	// {
-// 	// 	weight = 1.0;
-// 	// 	for (j = 0; j < rays_per_particle; ++j)
-// 	// 	{
-// 	// 		r = obs[j] * inv_world_scale;
-// 	// 		r = std::min<float>(std::max<float>(r,0.0),(float)sensor_model.size()-1.0);
-// 	// 		d = ranges[i*rays_per_particle+j] * inv_world_scale;
-// 	// 		d = std::min<float>(std::max<float>(d,0.0),(float)sensor_model.size()-1.0);
-// 	// 		weight *= sensor_model[(int)r][(int)d];
-// 	// 	}
-// 	// 	outs[i] = weight;
-// 	// }
 // }
 
 RayMarchingCUDA::RayMarchingCUDA(std::vector<std::vector<float> > grid, int w, int h, float mr) 
@@ -270,12 +222,10 @@ void RayMarchingCUDA::set_sensor_table(double *table, int t_w) {
 // num_casts must be less than or equal to chunk size
 void RayMarchingCUDA::calc_range_many(float *ins, float *outs, int num_casts) {
 	// copy queries to GPU buffer
-	// std::cout << "Copying memory to device: " << num_casts << std::endl;
 	cudaMemcpy(d_ins, ins, sizeof(float) * num_casts * 3,cudaMemcpyHostToDevice);
 	// execute queries on the GPU
 	cuda_ray_marching<<< CHUNK_SIZE / NUM_THREADS, NUM_THREADS >>>(d_ins,d_outs, d_distMap, width, height, max_range, num_casts);
 	// copy results back to CPU
-	// std::cout << "Copying results to cpu" << std::endl;
 	cudaMemcpy(outs,d_outs,sizeof(float)*num_casts,cudaMemcpyDeviceToHost);
 	cudaDeviceSynchronize();
 }
@@ -304,7 +254,6 @@ void RayMarchingCUDA::numpy_calc_range_angles(float * ins, float * angles, float
 	cudaMemcpy(d_ins, ins, sizeof(float) * num_particles * 3,cudaMemcpyHostToDevice);
 	// also copy angles to end of GPU buffer, this assumes there is enough space (which there should be)
 	cudaMemcpy(&d_ins[num_particles * 3], angles, sizeof(float) * num_angles,cudaMemcpyHostToDevice);
-
 	// execute queries on the GPU, have to pass coordinate space conversion constants
 	cuda_ray_marching_angles_world_to_grid<<< CHUNK_SIZE / NUM_THREADS, NUM_THREADS >>>(d_ins,d_outs, d_distMap, width, height, max_range,
 		num_particles, num_angles, world_origin_x, world_origin_y, world_scale, inv_world_scale, world_sin_angle, world_cos_angle, rotation_const);

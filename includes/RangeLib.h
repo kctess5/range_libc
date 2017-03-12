@@ -44,14 +44,13 @@ Useful Links: https://github.com/MRPT/mrpt/blob/4137046479222f3a71b5c00aee1d5fa8
 #include <set>
 #include <iomanip>      // std::setw
 #include <unistd.h>
-// #include <exception>
 #include <stdexcept>
 #include <sstream>
 // #define NDEBUG
 #include <cassert>
 #include <tuple>
 
-#define _MAKE_TRACE_MAP 1
+#define _MAKE_TRACE_MAP 0
 #define _TRACK_LUT_SIZE 0
 #define _TRACK_COLLISION_INDEXES 0
 
@@ -94,8 +93,7 @@ Useful Links: https://github.com/MRPT/mrpt/blob/4137046479222f3a71b5c00aee1d5fa8
 #define ANIL 
 #endif
 
-// these defines are for yaml serialization
-
+// these defines are for yaml/JSON serialization
 #define T1 "  "
 #define T2 T1 T1
 #define T3 T1 T1 T1
@@ -842,7 +840,6 @@ namespace ranges {
 		#endif
 		bool already_warned = false;
 	};
-	// #endif
 
 	class RayMarching : public RangeMethod
 	{
@@ -907,7 +904,6 @@ namespace ranges {
 			key_maker = utils::KeyMaker<uint64_t>(m.width,m.height,theta_discretization);
 			#endif
 
-
 			// determines the width of the projection of the map along each angle
 			std::vector<int> lut_widths;
 			// the angle for each theta discretization bin
@@ -944,7 +940,7 @@ namespace ranges {
 				   projected into the LUT, so we need to make sure that the index of every pixel will be 
 				   positive when projected into LUT space. For example, here's the example with no rotation
 
-            (0,height)  (width,height)      {
+                    (0,height)  (width,height)      {
 						    *----------*    -----------> []
 						    |  a       |    -----------> [a] 
 						    |      b   |    -----------> [b] 
@@ -979,7 +975,6 @@ namespace ranges {
 				float right_bottom_corner_y = map.width * sinf(angle);
 				#endif
 				
-
 				// find the lowest corner, and determine the translation necessary to make them all positive
 				float min_corner_y = std::min(left_top_corner_y, std::min(right_top_corner_y, right_bottom_corner_y));
 				float lut_translation = std::max(0.0, -1.0 * min_corner_y - _EPSILON);
@@ -1069,7 +1064,6 @@ namespace ranges {
 			for (int a = 0; a < theta_discretization; ++a) {
 				std::vector<std::set<int> > projection_lut_tracker;
 				for (int i = 0; i < lut_widths[a]; ++i)
-				// for (int i = 0; i < 10; ++i)
 				{
 					std::set<int> collection;
 					projection_lut_tracker.push_back(collection);
@@ -1095,7 +1089,6 @@ namespace ranges {
 		// mark all of the LUT entries that are potentially useful
 		// remove all LUT entries that are not potentially useful
 		void prune(float max_range) {
-
 			std::vector<std::vector<std::set<int> > > local_collision_table;
 
 			for (int a = 0; a < theta_discretization / 2.0; ++a) {
@@ -1252,7 +1245,6 @@ namespace ranges {
 		}
 
 		float ANIL calc_range(float x, float y, float heading) {
-			
 			#if _USE_LRU_CACHE
 			int theta_key = (int) roundf(heading * theta_discretization_div_M_2PI);
 			// int theta_key = angle_index;
@@ -1486,10 +1478,6 @@ namespace ranges {
 					}
 				}
 
-				// return std::make_pair(lut_space_x - val, max_range);
-
-				// std::cout << (*lut_bin)[inverse_index+1] << std::endl;
-
 				int inverse_index = index+1;
 				if (inverse_index == lut_bin->size()) {
 					#if _TRACK_COLLISION_INDEXES == 1
@@ -1532,8 +1520,6 @@ namespace ranges {
 					// float val = *std::lower_bound(lut_bin->begin(), lut_bin->end(), lut_space_x);
 					index = std::lower_bound(lut_bin->begin(), lut_bin->end(), lut_space_x) - lut_bin->begin();
 					val = (*lut_bin)[index];
-					
-					
 				} else { // do linear search if array is very small
 					// std::cout << "L" ;//<< std::endl;
 					for (int i = 0; i < lut_bin->size(); ++i)
@@ -1543,11 +1529,9 @@ namespace ranges {
 							val = obstacle_x;
 							index = i;
 							break;
-							// return obstacle_x - lut_space_x;
 						}
 					}
 				}
-
 
 				int inverse_index = index - 1;
 				if (inverse_index == -1) {
@@ -1557,17 +1541,16 @@ namespace ranges {
 
 					return std::make_pair(val - lut_space_x, max_range);
 				} else {
-					
 					#if _TRACK_COLLISION_INDEXES == 1
 					collision_table[angle_index][lut_index].insert(index);
 					collision_table[angle_index][lut_index].insert(inverse_index);
 					#endif
-
 					return std::make_pair(val - lut_space_x, lut_space_x - (*lut_bin)[inverse_index]);
 				}
 			}
 		}
 
+		// this works ok, but yaml deserialization is REALLY slow (at least in Python)
 		void serializeYaml(std::stringstream* ss) {
 			// (*ss) << std::fixed;
     		(*ss) << std::setprecision(7);
@@ -1605,6 +1588,7 @@ namespace ranges {
 			}
 		}
 
+		// directly generates JSON
 		void serializeJson(std::stringstream* ss) {
 			// (*ss) << std::fixed;
     		(*ss) << std::setprecision(7);
@@ -1662,7 +1646,6 @@ namespace ranges {
 
 		// compressed_lut[theta][offset] -> list of obstacle positions
 		std::vector<std::vector<std::vector<float> > > compressed_lut;
-		// std::vector<std::vector<bool > > map_grid;
 		// cached list of y translations necessary to project points into lut space
 		std::vector<float> lut_translations;
 		
@@ -1801,7 +1784,6 @@ namespace ranges {
 			int width = giant_lut.size();
 			int height = giant_lut[0].size();
 			DistanceTransform *slice = new DistanceTransform(width, height);
-
 			int dtheta = discretize_theta(theta);
 
 			for (int x = 0; x < width; ++x) {
@@ -1809,7 +1791,6 @@ namespace ranges {
 					slice->grid[x][y] = giant_lut[x][y][dtheta];
 				}
 			}
-
 			return slice;
 		}
 	protected:
