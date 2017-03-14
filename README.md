@@ -2,23 +2,25 @@
 
 This library provides for different implementations of 2D raycasting for 2D occupancy grids. The code is written and optimized in C++, and Python wrappers are also provided.
 
+WARNING: this is currently in a slightly weird state in preparation for 6.141 lab 5. I will try to fix up all the compile flags to work with both use cases soon.
+
 ## Building the Code
 
-The following has been tested on both Ubuntu 14.04 and OSX 10.10, hopefully it will work on other systems as well, or will at least be not too difficult to fix.
+The following has been tested on Ubuntu 14.04, OSX 10.10, and Ubuntu 16.06. Hopefully it will work on other systems as well, or will at least be not too difficult to fix.
 
 ### C++ code
 
 ```
 # clone the repository
-git clone https://github.mit.edu/chwalsh/range_libc_dist
-cd range_libc_dist
+git clone https://github.com/kctess5/range_libc
+cd range_libc
 mkdir build
 cd build
 cmake ..
 make
 ```
 
-If you get an error about having the wrong version of CMake, install a version of CMake that is >= version 3.3 from here: https://cmake.org/install/
+If you get an error about having the wrong version of CMake, install a version of CMake that is less than or equal to 3.6 (I use 3.6) from here: https://cmake.org/download/
 
 If you don't want to update your system's version of CMake, simply:
 
@@ -28,11 +30,11 @@ mkdir build
 cd build
 cmake ..
 make
-# 3.9 should be your cmake version number
-sudo ln -s [path to cmake directory]/build/bin/cmake /usr/bin/cmake3.9
+# 3.6 should be your cmake version number
+sudo ln -s [path to cmake directory]/build/bin/cmake /usr/bin/cmake3.6
 ```
 
-Then use cmake3.9 instead of cmake in the above instructions for building the range_lib code.
+Then use cmake3.6 instead of cmake in the above instructions for building the range_lib code.
 
 ### Python Wrappers
 
@@ -40,12 +42,14 @@ To build the code and its associated Python wrappers for use in Python code, do 
 
 ```
 # clone the repository
-git clone https://github.mit.edu/chwalsh/range_libc_dist
+git clone https://github.com/kctess5/range_libc
 cd range_libc_dist/pywrapper
 # for an in place build, do this:
 python setup.py build_ext --inplace
 # for a system wide install, do this:
 python setup.py install
+# to compile with the GPU kernels, do this:
+WITH_CUDA=ON python setup.py install
 # this should take a few seconds to run
 python test.py
 ```
@@ -58,14 +62,15 @@ MIT's 6.141 uses this library for accelerating particle filters onboard the RACE
 
 ```
 # Copy the code
-cd range_libc_dist 
+cd range_libc
+# this part is not strictly necessary, but useful for debugging compilation issues
 mkdir build
 cmake ..
 make
 # To build the Python wrappers
 sudo apt-get install Cython
 cd pywrapper
-python setup.py install
+sudo WITH_CUDA=ON python setup.py install
 ```
 
 ## License
@@ -86,6 +91,8 @@ range_libc_dist/
 ├── includes
 │   ├── lru_cache.h  # implementation of LRU_cache, optionally used
 │   ├── RangeLib.h   # main RangeLib source code
+│   ├── CudaRangeLib.h # cuda function header file
+│   ├── kernels.cu   # cuda kernels for super fast 2D ray casting
 │   └── RangeUtils.h # various utility functions
 ├── license.txt
 ├── main.cpp         # example c++ usage and simple benchmarks
@@ -94,7 +101,7 @@ range_libc_dist/
 ├── maps             # example PNG maps
 │   └── [various .png files]
 ├── pywrapper
-│   ├── RangeLib.pyx # wrapper file for using RangeLib from Python
+│   ├── RangeLibc.pyx # wrapper file for using RangeLib from Python
 │   ├── setup.py     # compilation rules for Cython
 │   └── test.py      # example Python usage
 ├── README.md
@@ -105,6 +112,8 @@ range_libc_dist/
 ```
 
 ## RangeLibc Algorithms Overview
+
+NOTE: this is slightly outdated but probably mostly ok
 
 <!--- ///////////////////////////// Bresenham's Line Description ////////////////////////////// -->
 
@@ -335,13 +344,3 @@ Calc range: O(1)
 - Very large memory requirement
 - Curse of dimensionality in higher dimensions
 
-
-### Notes
-#### Interpolation
-
-
-### Benchmarks
-
-### Citations
-
-http://people.cs.uchicago.edu/~pff/papers/dt.pdf

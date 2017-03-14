@@ -28,12 +28,12 @@ import itertools, time
 # print range_libc.LRU_CACHE_SIZE
 
 # testMap = range_libc.PyOMap("../maps/basement_hallways_5cm.png",1)
-# testMap = range_libc.PyOMap("../maps/synthetic.map.png",1)
-testMap = range_libc.PyOMap("/home/racecar/racecar-ws/src/TA_examples/lab5/maps/basement.png",1)
+testMap = range_libc.PyOMap("../maps/synthetic.map.png",1)
+# testMap = range_libc.PyOMap("/home/racecar/racecar-ws/src/TA_examples/lab5/maps/basement.png",1)
 
 if testMap.error():
 	exit()
-testMap.save("./test.png")
+# testMap.save("./test.png")
 
 num_vals = 100000
 
@@ -44,17 +44,13 @@ num_vals = 100000
 
 print "Init: bl"
 bl = range_libc.PyBresenhamsLine(testMap, 500)
-
-bl.calc_range(100,100,np.pi/4.0)
-bl.save_trace("./trace.png")
-
-# print "Init: rm"
-# rm = range_libc.PyRayMarching(testMap, 500)
-# print "Init: cddt"
-# cddt = range_libc.PyCDDTCast(testMap, 500, 108)
-# cddt.prune()
-# print "Init: glt"
-# glt = range_libc.PyGiantLUTCast(testMap, 500, 108)
+print "Init: rm"
+rm = range_libc.PyRayMarching(testMap, 500)
+print "Init: cddt"
+cddt = range_libc.PyCDDTCast(testMap, 500, 108)
+cddt.prune()
+print "Init: glt"
+glt = range_libc.PyGiantLUTCast(testMap, 500, 108)
 # this is for testing the amount of raw functional call overhead, does not compute ranges
 # null = range_libc.PyNull(testMap, 500, 108)
 
