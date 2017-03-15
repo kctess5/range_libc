@@ -46,7 +46,7 @@ cdef extern from "includes/RangeLib.h" namespace "ranges":
         BresenhamsLine(OMap m, float mr)
         float calc_range(float x, float y, float heading)
         void numpy_calc_range(float * ins, float * outs, int num_casts)
-        # bool saveTrace(string filename)
+        bool saveTrace(string filename)
         void eval_sensor_model(float * obs, float * ranges, double * outs, int rays_per_particle, int particles)
         void set_sensor_model(double * table, int width)
         void numpy_calc_range_angles(float * ins, float * angles, float * outs, int num_casts, int num_angles)
@@ -55,6 +55,7 @@ cdef extern from "includes/RangeLib.h" namespace "ranges":
         RayMarching(OMap m, float mr)
         float calc_range(float x, float y, float heading)
         void numpy_calc_range(float * ins, float * outs, int num_casts)
+        bool saveTrace(string filename)
         void eval_sensor_model(float * obs, float * ranges, double * outs, int rays_per_particle, int particles)
         void set_sensor_model(double * table, int width)
         void numpy_calc_range_angles(float * ins, float * angles, float * outs, int num_casts, int num_angles)
@@ -128,6 +129,7 @@ def quaternion_to_angle(q):
 cdef class PyOMap:
     cdef OMap *thisptr      # hold a C++ instance which we're wrapping
     def __cinit__(self, arg1, arg2=None):
+        set_trans_params = False
         if arg1 is not None and arg2 is not None:
             if isinstance(arg1, int) and isinstance(arg1, int):
                 self.thisptr = new OMap(<int>arg1,<int>arg2)
@@ -161,11 +163,20 @@ cdef class PyOMap:
                 self.thisptr.world_origin_y = map_msg.info.origin.position.y
                 self.thisptr.world_sin_angle = np.sin(angle)
                 self.thisptr.world_cos_angle = np.cos(angle)
+                set_trans_params = True
             else:
                 self.thisptr = new OMap(arg1)
         else:
             print "Failed to construct PyOMap, check argument types."
             self.thisptr = new OMap(1,1)
+
+        if not set_trans_params:
+            self.thisptr.world_scale = 1.0
+            self.thisptr.world_angle = 0.0
+            self.thisptr.world_origin_x = 0.0
+            self.thisptr.world_origin_y = 0.0
+            self.thisptr.world_sin_angle = 0.0
+            self.thisptr.world_cos_angle = 1.0
 
     def __dealloc__(self):
         del self.thisptr
@@ -202,8 +213,8 @@ cdef class PyBresenhamsLine:
     cpdef void calc_range_repeat_angles_eval_sensor_model(self,np.ndarray[float, ndim=2, mode="c"] ins,np.ndarray[float, ndim=1, mode="c"] angles, np.ndarray[float, ndim=1, mode="c"] obs, np.ndarray[double, ndim=1, mode="c"] weights):
         self.thisptr.calc_range_repeat_angles_eval_sensor_model(&ins[0,0], &angles[0], &obs[0],  &weights[0], ins.shape[0], angles.shape[0])
 
-    # cpdef float save_trace(self, string path):
-    #     self.thisptr.saveTrace(path)
+    cpdef float saveTrace(self, string path):
+        self.thisptr.saveTrace(path)
     cpdef void eval_sensor_model(self, np.ndarray[float, ndim=1, mode="c"] observation, np.ndarray[float, ndim=1, mode="c"] ranges, np.ndarray[double, ndim=1, mode="c"] outs, int num_rays, int num_particles):
         self.thisptr.eval_sensor_model(&observation[0],&ranges[0], &outs[0], num_rays, num_particles)
     cpdef void set_sensor_model(self, np.ndarray[double, ndim=2, mode="c"] table):
@@ -222,7 +233,8 @@ cdef class PyRayMarching:
         return self.thisptr.calc_range(x, y, heading)
     cpdef void calc_range_many(self,np.ndarray[float, ndim=2, mode="c"] ins, np.ndarray[float, ndim=1, mode="c"] outs):
         self.thisptr.numpy_calc_range(&ins[0,0], &outs[0], outs.shape[0])
-    
+    cpdef float saveTrace(self, string path):
+        self.thisptr.saveTrace(path)
     cpdef void calc_range_repeat_angles(self,np.ndarray[float, ndim=2, mode="c"] ins,np.ndarray[float, ndim=1, mode="c"] angles, np.ndarray[float, ndim=1, mode="c"] outs):
         self.thisptr.numpy_calc_range_angles(&ins[0,0], &angles[0], &outs[0], ins.shape[0], angles.shape[0])
 

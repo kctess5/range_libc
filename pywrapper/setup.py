@@ -11,40 +11,34 @@ try:
 except AttributeError:
     numpy_include = numpy.get_numpy_include()
 
-if "WITH_CUDA" in os.environ:
-    use_cuda = (os.environ["WITH_CUDA"].lower() == "on")
-else:
-    use_cuda = False
+def check_for_flag(flag_str, truemsg=False, falsemsg=False):
+	if flag_str in os.environ:
+	    enabled = (os.environ[flag_str].lower() == "on")
+	else:
+	    enabled = False
 
-if use_cuda:
-    print "Compiling with CUDA support"
-else:
-    print "Compiling without CUDA support. To enable CUDA use:"
-    print "   $ sudo WITH_CUDA=ON python setup.py install"
+	if enabled and not truemsg == False:
+		print truemsg
+	elif not enabled and not falsemsg == False:
+		print falsemsg
+		print "   $ sudo "+flag_str+"=ON python setup.py install"
+	return enabled
+
+use_cuda = check_for_flag("WITH_CUDA", \
+	"Compiling with CUDA support", \
+	"Compiling without CUDA support. To enable CUDA use:")
+trace    = check_for_flag("TRACE", \
+	"Compiling with trace enabled for Bresenham's Line", \
+	"Compiling without trace enabled for Bresenham's Line")
+
+print 
+print "--------------"
+print 
 
 # support for compiling in clang
 if platform.system().lower() == "darwin":
     os.environ["MACOSX_DEPLOYMENT_TARGET"] = platform.mac_ver()[0]
     os.environ["CC"] = "c++"
-
-# compiler_flags = ["-w","-std=c++11", "-march=native", "-ffast-math", "-fno-math-errno"]
-compiler_flags = ["-w","-std=c++11", "-march=native", "-ffast-math", "-fno-math-errno", "-O3"]
-nvcc_flags = ['-arch=sm_20', '--ptxas-options=-v', '-c', '--compiler-options', "'-fPIC'", "-w","-std=c++11"]
-include_dirs = ["../", numpy_include]
-depends = ["../includes/*.h"]
-sources = ["RangeLibc.pyx","../vendor/lodepng/lodepng.cpp"]
-
-CHUNK_SIZE = "262144"
-NUM_THREADS = "256"
-
-if use_cuda:
-    compiler_flags.append("-DUSE_CUDA=1");        nvcc_flags.append("-DUSE_CUDA=1")
-    compiler_flags.append("-DCHUNK_SIZE="+CHUNK_SIZE); nvcc_flags.append("-DCHUNK_SIZE="+CHUNK_SIZE)
-    compiler_flags.append("-DNUM_THREADS="+NUM_THREADS);   nvcc_flags.append("-DNUM_THREADS="+NUM_THREADS)
-
-    CUDA = locate_cuda()
-    include_dirs.append(CUDA['include'])
-    sources.append("../includes/kernels.cu")
 
 def find_in_path(name, path):
     "Find a file in a search path"
@@ -67,8 +61,11 @@ def locate_cuda():
     """
     # print os.environ
     # first check if the CUDAHOME env variable is in use
-    if True:
-    	home = "/usr/local/cuda"
+    if os.path.isdir("/usr/local/cuda-7.5"):
+    	home = "/usr/local/cuda-7.5"
+        nvcc = pjoin(home, 'bin', 'nvcc')
+    elif os.path.isdir("/usr/local/cuda"):
+    	home = "/usr/local/cuda-7.5"
         nvcc = pjoin(home, 'bin', 'nvcc')
     elif 'CUDAHOME' in os.environ:
         home = os.environ['CUDAHOME']
@@ -89,6 +86,35 @@ def locate_cuda():
             raise EnvironmentError('The CUDA %s path could not be located in %s' % (k, v))
 
     return cudaconfig
+
+
+##################### Configuration ############################
+
+
+# compiler_flags = ["-w","-std=c++11", "-march=native", "-ffast-math", "-fno-math-errno"]
+compiler_flags = ["-w","-std=c++11", "-march=native", "-ffast-math", "-fno-math-errno", "-O3"]
+nvcc_flags = ['-arch=sm_20', '--ptxas-options=-v', '-c', '--compiler-options', "'-fPIC'", "-w","-std=c++11"]
+include_dirs = ["../", numpy_include]
+depends = ["../includes/*.h"]
+sources = ["RangeLibc.pyx","../vendor/lodepng/lodepng.cpp"]
+
+CHUNK_SIZE = "262144"
+NUM_THREADS = "256"
+
+if use_cuda:
+    compiler_flags.append("-DUSE_CUDA=1");        nvcc_flags.append("-DUSE_CUDA=1")
+    compiler_flags.append("-DCHUNK_SIZE="+CHUNK_SIZE); nvcc_flags.append("-DCHUNK_SIZE="+CHUNK_SIZE)
+    compiler_flags.append("-DNUM_THREADS="+NUM_THREADS);   nvcc_flags.append("-DNUM_THREADS="+NUM_THREADS)
+
+    CUDA = locate_cuda()
+    include_dirs.append(CUDA['include'])
+    sources.append("../includes/kernels.cu")
+
+if trace:
+	compiler_flags.append("-D_MAKE_TRACE_MAP=1")
+
+
+##################################################################
 
 def customize_compiler_for_nvcc(self):
     """inject deep into distutils to customize how the dispatch
