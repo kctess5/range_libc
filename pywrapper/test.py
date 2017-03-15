@@ -42,6 +42,20 @@ num_vals = 100000
 # vals[1,:] = testMap.height()/2.0
 # vals[2,:] = np.linspace(0,2.0*np.pi, num=num_vals)
 
+# def make_scan(x,y,theta,n_ranges):
+# 	MAX_SCAN_ANGLE = (0.75 * np.pi)
+# 	bl = range_libc.PyBresenhamsLine(testMap, 300)
+# 	# bl = range_libc.PyRayMarching(testMap, 500)
+# 	queries = np.zeros((n_ranges,3),dtype=np.float32)
+# 	ranges = np.zeros(n_ranges,dtype=np.float32)
+# 	queries[:,0] = x
+# 	queries[:,1] = y
+# 	queries[:,2] = theta + np.linspace(-MAX_SCAN_ANGLE, MAX_SCAN_ANGLE, n_ranges)
+# 	bl.calc_range_many(queries,ranges)
+# 	bl.saveTrace("./test.png")
+
+# make_scan(510,520,np.pi/2.0,61)
+
 print "Init: bl"
 bl = range_libc.PyBresenhamsLine(testMap, 500)
 print "Init: rm"
@@ -70,7 +84,7 @@ for x in xrange(10):
 	def bench(obj,name):
 		print "Running:", name
 		start = time.clock()
-		obj.calc_range_np(vals, ranges)
+		obj.calc_range_many(vals, ranges)
 		end = time.clock()
 		dur_np = end - start
 		print ",,,"+name+" np: finished computing", ranges.shape[0], "ranges in", dur_np, "sec"
