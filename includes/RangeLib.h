@@ -50,7 +50,10 @@ Useful Links: https://github.com/MRPT/mrpt/blob/4137046479222f3a71b5c00aee1d5fa8
 #include <cassert>
 #include <tuple>
 
-#define _MAKE_TRACE_MAP 0
+#ifndef _MAKE_TRACE_MAP 
+	#define _MAKE_TRACE_MAP 0
+#endif
+
 #define _TRACK_LUT_SIZE 0
 #define _TRACK_COLLISION_INDEXES 0
 
@@ -418,9 +421,15 @@ namespace ranges {
 		float maxRange() { return max_range; }
 		float memory() { return -1; }
 		
-		#if _MAKE_TRACE_MAP == 1
-		void saveTrace(std::string fn) { map.saveTrace(fn); }
-		#endif
+		
+		void saveTrace(std::string fn) { 
+			#if _MAKE_TRACE_MAP == 1
+			map.saveTrace(fn);
+			#else
+			std::cout << "WARNING: trace map not generated, must compile with trace support enabled." << std::endl;
+			#endif
+		}
+		
 
 		// wrapper function to call calc_range repeatedly with the given array of inputs
 		// and store the result to the given outputs. Useful for avoiding cython function
