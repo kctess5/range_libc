@@ -1295,6 +1295,9 @@ namespace ranges {
 			float lut_space_y = (x * sinangle + y * cosangle) + lut_translations[angle_index];
 
 			unsigned int lut_index = (int) lut_space_y;
+			// this is to prevent segfaults
+			if (lut_index < 0 || lut_index >= compressed_lut[angle_index].size())
+				return max_range;
 			std::vector<float> *lut_bin = &compressed_lut[angle_index][lut_index];
 
 			// the angle is in range pi:2pi, so we must search in the opposite direction
