@@ -1247,16 +1247,26 @@ namespace ranges {
 	   		#else
 	   		int rounded = (int) roundf(theta * theta_discretization_div_M_2PI);
 	   		#endif
+			// this handles the special case where the theta rounds up and should wrap around
+			if (rounded == theta_discretization >> 1) {
+				rounded = 0;
+				is_flipped = !is_flipped;
+			}
 	   		int binned = rounded % theta_discretization;
-				float discrete_angle = binned * M_2PI_div_theta_discretization;
+			float discrete_angle = binned * M_2PI_div_theta_discretization;
    			#else
 	   		#if _USE_FAST_ROUND == 1
 	   		int rounded = int ((theta * theta_discretization / M_2PI) + 0.5);
 	   		#else
 	   		int rounded = (int) roundf(theta * theta_discretization / M_2PI);
 	   		#endif
+			// this handles the special case where the theta rounds up and should wrap around
+			if (rounded == theta_discretization >> 1) {
+				rounded = 0;
+				is_flipped = !is_flipped;
+			}
 	   		int binned = rounded % theta_discretization;
-				float discrete_angle = (binned * M_2PI) / ((float) theta_discretization);
+			float discrete_angle = (binned * M_2PI) / ((float) theta_discretization);
 			#endif
 			return std::make_tuple(binned, discrete_angle, is_flipped);
 		}
