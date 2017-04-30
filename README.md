@@ -1,6 +1,6 @@
 # RangeLibc
 
-This library provides for different implementations of 2D raycasting for 2D occupancy grids. The code is written and optimized in C++, and Python wrappers are also provided.
+This library provides for different implementations of 2D raycasting for 2D occupancy grids, including the Compressed Directional Distance Transform (CDDT) algorithm. The code is written and optimized in C++, and Python wrappers are also provided.
 
 WARNING: this is currently in a slightly weird state in preparation for 6.141 lab 5. I will try to fix up all the compile flags to work with both use cases soon.
 
@@ -54,7 +54,7 @@ WITH_CUDA=ON python setup.py install
 python test.py
 ```
 
-Take a look at test.py in the pywrapper directory for example usage. It is recommended that you use the calc_range_np method with batched queries, as it is significantly faster due to lower function call overhead per query. Basically, you simply populate a Numpy array with the (x,y,theta) queries and the function will populate a provided numpy array with the results. Under the hood, the code operates directly on the Numpy data structure, eliminating the need to copy data back and forth through function calls.
+To see example usage of the Python wrappers (using the ROS specific helpers) see [https://github.com/mit-racecar/particle_filter](https://github.com/mit-racecar/particle_filter). See the [/docs](/docs) folder for documentation.
 
 ### Building on a RACECAR
 
@@ -106,25 +106,40 @@ range_libc_dist/
 │   └── test.py      # example Python usage
 ├── README.md
 └── vendor           # various dependencies, see in here for licenses
-    ├── distance_transform # for computing euclidean distance transform
+    ├── distance_transform.h # for computing euclidean distance transform
     ├── gflags       # command line flag library from Google
     └── lodepng      # simple PNG loading/saving library
 ```
 
 ## RangeLibc Algorithms Overview
 
-NOTE: this is slightly outdated but probably mostly ok
+  * [Bresenham's Line (BL)](#bresenhams-line-bl)
+  * [Ray Marching (RM/RMGPU)](#ray-marching-rm)
+  * [Compressed Directional Distance Transform (CDDT/PCDDT)](#compressed-directional-distance-transform-cddt-ours)
+  * [Giant Lookup Table (GLT)](#giant-lookup-table-glt)
+
+![Range Method Performance Comparison](./media/comparison.png)
+
+
+
+For a better treatment, see the paper associated with this library. Link coming very soon!
 
 <!--- ///////////////////////////// Bresenham's Line Description ////////////////////////////// -->
 
-### Bresenham's Line
+### Bresenham's Line (BL)
+
+Bresenham's line algorithm [1] is one of the most widely used methods for two dimensional ray casting in occupancy grids. The algorithm incrementally determines the set of pixels that approximate the trajectory of a query ray starting from the query point (x,y)_{query} and progressing in the theta_{query} direction one pixel at a time. The algorithm terminates once the nearest occupied pixel is discovered, and the euclidean distance between that occupied pixel and (x,y)_{query} is reported. This algorithm is widely implemented in particle filters due to its simplicity and ability to operate on a dynamic map. The primary disadvantage is that it is slow, potentially requiring hundreds of memory accesses for a single ray cast. While average performance is highly environment dependent, Bresenham's Line algorithm is linear in map size in the worst case.
 
 <!--- /////////////////////////////// Ray Marching Description //////////////////////////////// -->
-### Ray Marching
+### Ray Marching (RM/RMGPU)
 
-Ray marching is a well known algorithm, frequently used to accelerate fractal or volumetric graphical rendering applications. The basic idea can be understood very intuitively. Imagine that you are in an unknown environment, with a blindfold on. If an oracle tells you the distance to the nearest obstacle, you can surely move in any direction by at most that distance without colliding with any obstacle. By applying this concept recursively, one can step along a particular ray by the minimum distance to the nearest obstacle until colliding with some obstacle.
+Ray marching [2] is a well known algorithm, frequently used to accelerate fractal or volumetric graphical rendering applications. The basic idea can be understood very intuitively. Imagine that you are in an unknown environment, with a blindfold on. If an oracle tells you the distance to the nearest obstacle, you can surely move in any direction by at most that distance without colliding with any obstacle. By applying this concept recursively, one can step along a particular ray by the minimum distance to the nearest obstacle until colliding with some obstacle. The following figure demonstrates this idea graphically (from [3]).
 
-In the occupancy grid world, it is possible to precompute the distance to the nearest obstacle for every discrete state in the grid via the euclidean distance transform. 
+![Ray Marching](./media/spheretrace.jpg)
+
+In the occupancy grid world, it is possible to precompute the distance to the nearest obstacle for every discrete state in the grid via the euclidean distance transform.
+
+This method is implemented both for the CPU and GPU in RangeLibc. The GPU implementation is the fastest available method for large batches of queries.
 
 #### Pseudocode:
 
@@ -158,15 +173,15 @@ Pruning: O(|map width|\*|map height|\*|theta_discretization|\*log(min(|occupied 
 Calc range: O(log(min(|occupied pixels|, longest map dimension)))
 Memory: O(|theta_discretization|\*|edge pixels|) - in practice much smaller, due to pruning
 
-** Pros **
+**Pros**
 
 - Fast calc_range on average
 - Space efficent
-- Easy to implement
+- Easy to implement, and easy to implement on a GPU
 - Fairly fast to compute distance transform
 - Extends easily to 3D
 
-** Cons **
+**Cons**
 
 - Poor worst case performance - degenerate case similar to Bresenham's line
 - High degree of control flow divergence (for parallelization)
@@ -174,25 +189,13 @@ Memory: O(|theta_discretization|\*|edge pixels|) - in practice much smaller, due
 
 <!--- /////////////////////////////////// CDDT Description //////////////////////////////////// -->
 
-### Compressed Directional Distance Transform (ours)
+### Compressed Directional Distance Transform (CDDT/PCDDT) (ours)
 
-Create a data structure which allows the distance value to be computed for any discrete (x,y,theta) ray in fast (but not constant) time. The easiest way to visualize this datastructure is to imagine what I refer to as a directional distance transform. A euclidean distance transform stores the distance to the nearest obstacle *in any direction* for every discrete state in a grid. A directional distance transform instead stores the distance to the nearest obstacle in a particular direction theta for each state in the grid. Given a directional distance transform for a particular theta, one can ascertain the position of the nearest obstacle in the theta direction from each discrete position in constant time, simply reading from the table. By precomputing the directional distance transform for every discrete theta, constant time ray casting is possible for any (x,y,theta) state. The obvious downside is that such a table would be very large - storing |x|*|y|*|theta| discrete states would require gigabytes of memory for reasonably large maps.
-
-<img alt="Distance Transform examples" src="./graphics/dist_figure.png">
-<p align="center" style="color:gray; margin-top: 0">Fig 1</p>
-
-A key observation is that such a table would contain a large amount of redundant information, which can be easily compressed. This can be seen in the case where theta is some cardinal direction, so the distance value for adjacent grid cells in one direction can be modeled as a sawtooth wave with a slope of 1. By storing only the position of where the sawtooth wave goes to zero, the correct distance value can be attained for any cell in that row. The zero points are simply the position of all the obstacles in that row. So for each theta value, all obstacles in the source map are projected onto one axis, and for some discrete set of bins, the position of all obstcles falling in that bin are stored.
-
-Clearly, this would create theta copies of the geometry from the source map, so the memory requirement is now |theta|*|occupied grid cells| which is at worst |x|*|y|*|theta|. However, the memory requirement can be further reduced by a factor of 2 by exploiting the rotational symmetry. The projection along the 0 direction is just the reverse of the projection along the pi direction. Thus, one only needs to store |0:pi| compressed LUTs in order to span the theta space.
-
-Furthermore, several optimizations exist when one considers which obstacles in the grid will never result in a ray casting collision. For example, consider a 3x3 block of obstacles in an otherwise empty map. The center obstcle will never be the nearest neighbor in any ray casting query, because any such query would first intersect with one of the 8 surrounding obstacles. To exploit this, one can take the morphological edge map of the source map and use that to generate the compressed LUT datastructure without loss of generality. This can result in significant memory usage reductions in dense maps, where the number of obstacles adjacent to empty cells is small compared to the total number of obstacles. 
-
-Similarly, we can prune many of the obstacles in a given theta bin that could not possibly result in a collision. Consider the ca se where a colinear wall is entirely projected into a single theta bin. Along the theta direction implied by the theta bin, only one point can possibly be involved in a ray casting collision - the edgemost obstacle. Since we can ray cast in two directions for each theta bin, there are in fact two edgemost obstacles that must be considered. All non-edge wall components may be safely discarded without loss of generality. This is easy to understand in the cardinal directions, where pixel boundries line up nicely, but in the non-cardinal directions it becomes more difficult to determine which obstacles could possibly be involved in a collision. Rather than attempting to analytically determine which obstacles will result in ray casting collisions, it is easiest to ray cast from every possible (x,y,theta) and prune each LUT element which is never involved in a collision. 
+The Compressed Directional Distance Transform (CDDT) algorithm uses a compressed data structure to represent map geometry in a way which allows for fast queries. An optional pruning step removes unneeded elements in the data structure for slightly faster operation (PCDDT). For a full description of the algorithm, see the associated paper (link coming soon). 
 
 #### Pseudocode:
 
 ```
-
 # for the given theta, determine a translation that will ensure the 
 # y coordinate of every pixel in the rotated map will be positive
 def y_offset(theta):
@@ -282,20 +285,21 @@ def calc_range(x,y,theta):
 
 #### Analysis
 
-Precomputation: O(|width|*|height|) for 2D grid. In general O(dk) where d is the dimensionality of the grid, and k is the number of grid locations.
+Precomputation: O(|width|\*|height|) for 2D grid. In general O(dk) where d is the dimensionality of the grid, and k is the number of grid locations.
 Calc range: worst case O(|longest map dimension|), on average much faster (close to logarithmic performance in scene size)
-Memory: O(|width|*|height|) for 2D grid. In general O(k) where k is the number of grid locations.
+Memory: O(|width|\*|height|) for 2D grid. In general O(k) where k is the number of grid locations.
 
-** Pros **
+**Pros**
 
 - Fast calc_range, in practice nearly constant time
 - Radial symmetry optimizations can provide additional speed in the right context
 - Potential for online incremental compressed LUT modification for use in SLAM (would need to store additional metadata)
 - Space efficent
+- Fast construction time
 
-** Cons **
+**Cons**
 
-- Slow construction and pruning time
+- Slow pruning time (optional)
 - Approximate due to the discrete theta space
 - Can be difficult to implement well
 - Curse of dimensionality in higher dimensions
@@ -303,9 +307,9 @@ Memory: O(|width|*|height|) for 2D grid. In general O(k) where k is the number o
 
 <!--- //////////////////////////////////// LUT Description //////////////////////////////////// -->
 
-### Giant Lookup Table
+### Giant Lookup Table (GLT)
 
-Precompute distances for all possible (x,y,theta) states.
+Precompute distances for all possible (x,y,theta) states and store the results in a big table for fast lookup.
 
 #### Pseudocode:
 
@@ -332,15 +336,21 @@ Precomputation: O(|theta_discretization|\*|width|\*|height|\*O(calc_range))
 Memory: O(|theta_discretization|\*|width|\*|height|)
 Calc range: O(1)
 
-** Pros **
+**Pros**
 
 - Very fast calc_range
 - Easy to implement
 
-** Cons **
+**Cons**
 
 - Very slow construction time
 - Approximate due to the discrete theta space
 - Very large memory requirement
 - Curse of dimensionality in higher dimensions
 
+
+## References
+
+1.  J. Bresenham. "Algorithm for Computer Control of a Digital Plotter," IBM Systems Journal, vol. 4, no. 1, pp. 25-30, 1965.
+2.  K. Perlin and E. M. Hoffert. "Hypertexture," Computer Graphics, vol 23, no. 3, pp. 297-306, 1989.
+3. M. Pharr, and R. Fernando. "Chapter 8. Per-Pixel Displacement Mapping with Distance Functions" in GPU gems 2: Programming techniques for high-performance graphics and general-purpose computation, 3rd ed. United States: Addison-Wesley Educational Publishers, 2005.
