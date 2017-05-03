@@ -69,6 +69,7 @@ cdef extern from "includes/RangeLib.h" namespace "ranges":
         void set_sensor_model(double * table, int width)
         void numpy_calc_range_angles(float * ins, float * angles, float * outs, int num_casts, int num_angles)
         void calc_range_repeat_angles_eval_sensor_model(float * ins, float * angles, float * obs, double * weights, int num_particles, int num_angles)
+        void calc_range_many_radial_optimized(float * ins, float * outs, int num_particles, int num_rays, float min_angle, float max_angle)
     cdef cppclass GiantLUTCast:
         GiantLUTCast(OMap m, float mr, unsigned int td)
         float calc_range(float x, float y, float heading)
@@ -270,6 +271,10 @@ cdef class PyCDDTCast:
     cpdef void calc_range_repeat_angles_eval_sensor_model(self,np.ndarray[float, ndim=2, mode="c"] ins,np.ndarray[float, ndim=1, mode="c"] angles, np.ndarray[float, ndim=1, mode="c"] obs, np.ndarray[double, ndim=1, mode="c"] weights):
         self.thisptr.calc_range_repeat_angles_eval_sensor_model(&ins[0,0], &angles[0], &obs[0],  &weights[0], ins.shape[0], angles.shape[0])
     
+    cpdef void calc_range_many_radial_optimized(self, int num_rays, float min_angle, float max_angle, np.ndarray[float, ndim=2, mode="c"] ins, np.ndarray[float, ndim=1, mode="c"] outs):
+        # self.thisptr.calc_range_many_radial_optimized(num_rays, min_angle, max_angle, num_particles, &ins[0,0], &outs[0])
+        self.thisptr.calc_range_many_radial_optimized(&ins[0,0], &outs[0], ins.shape[0], num_rays, min_angle, max_angle)
+
     cpdef void calc_range_repeat_angles(self,np.ndarray[float, ndim=2, mode="c"] ins,np.ndarray[float, ndim=1, mode="c"] angles, np.ndarray[float, ndim=1, mode="c"] outs):
         self.thisptr.numpy_calc_range_angles(&ins[0,0], &angles[0], &outs[0], ins.shape[0], angles.shape[0])
     

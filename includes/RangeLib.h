@@ -609,6 +609,73 @@ namespace ranges {
 			}
 			#endif
 		}
+
+		// this is to compute a lidar sensor model using radial (calc_range_pair) optimizations
+		// this is only exact for a certain set of downsample amounts
+		void calc_range_many_radial_optimized(float * ins, float * outs, int num_particles, int num_rays, float min_angle, float max_angle) {
+			#if ROS_WORLD_TO_GRID_CONVERSION == 1
+			// cache these constants on the stack for efficiency
+			float inv_world_scale = 1.0 / map.world_scale; 
+			float world_scale = map.world_scale; 
+			float world_angle = map.world_angle;
+			float world_origin_x = map.world_origin_x;
+			float world_origin_y = map.world_origin_y;
+			float world_sin_angle = map.world_sin_angle;
+			float world_cos_angle = map.world_cos_angle;
+			float rotation_const = -1.0 * world_angle - 3.0*M_PI / 2.0;
+
+			// avoid allocation on every loop iteration
+			float x_world, y_world, theta_world, x, y, temp, theta = 0.0;
+
+			// do no allocations in the main loop
+			int i, a = 0;
+
+
+			float step = (max_angle - min_angle) / (num_rays - 1);
+			float angle = min_angle;
+
+
+			int max_pairwise_index = (float)num_rays / 3.0;
+			float index_offset_float = (num_rays - 1.0) * M_PI / (max_angle - min_angle);
+
+			// TODO: check if this index_offset_float is not very close to an integer
+			// in which case throw a warning that this downsample factor is poorly compatible
+			// with this radial optimization
+			int index_offset = roundf(index_offset_float);
+			float r, r_inv = 0.0;
+
+			for (i = 0; i < num_particles; ++i)
+			{
+				x_world = ins[i*3];
+				y_world = ins[i*3+1];
+				theta_world = ins[i*3+2];
+				theta = -theta_world + rotation_const;
+
+				x = (x_world - world_origin_x) * inv_world_scale;
+				y = (y_world - world_origin_y) * inv_world_scale;
+				temp = x;
+				x = world_cos_angle*x - world_sin_angle*y;
+				y = world_sin_angle*temp + world_cos_angle*y;
+
+				angle = min_angle;
+				for (a = 0; a <= max_pairwise_index; ++a) {
+					std::tie(r, r_inv) = calc_range_pair(y,x,theta - angle);
+					outs[i*num_rays+a] = r * world_scale;
+					outs[i*num_rays+a+index_offset] = r_inv * world_scale;
+					angle += step;
+				}
+
+				for (a = max_pairwise_index + 1; a < index_offset; ++a) {
+					outs[i*num_rays+a] = calc_range(y,x,theta - angle) * world_scale;
+					angle += step;
+				}
+			}
+			#endif
+			return;
+		}
+
+
+
 		#endif
 	
 	protected:
