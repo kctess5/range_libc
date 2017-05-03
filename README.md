@@ -120,9 +120,7 @@ range_libc_dist/
 
 ![Range Method Performance Comparison](./media/comparison.png)
 
-
-
-For a better treatment, see the paper associated with this library. Link coming very soon!
+The above benchmarks were performed on an NVIDIA Jetson TX1 with a single thread. For a better treatment, see the paper associated with this library. Link coming very soon!
 
 <!--- ///////////////////////////// Bresenham's Line Description ////////////////////////////// -->
 
