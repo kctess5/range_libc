@@ -1,6 +1,6 @@
 # RangeLibc
 
-This library provides for different implementations of 2D raycasting for 2D occupancy grids, including the Compressed Directional Distance Transform (CDDT) algorithm. The code is written and optimized in C++, and Python wrappers are also provided.
+This library provides for different implementations of 2D raycasting for 2D occupancy grids, including the Compressed Directional Distance Transform (CDDT) algorithm as proposed in [this publication](http://arxiv.org/abs/1705.01167). The code is written and optimized in C++, and Python wrappers are also provided.
 
 WARNING: this is currently in a slightly weird state in preparation for 6.141 lab 5. I will try to fix up all the compile flags to work with both use cases soon.
 
@@ -81,6 +81,18 @@ You may obtain a copy of the License at: http://www.apache.org/licenses/LICENSE-
 
 Enjoy!
 
+## Cite
+
+This library accompanies the following [publication](http://arxiv.org/abs/1705.01167).
+
+    @article{walsh17,
+        author = {Corey Walsh and 
+                  Sertac Karaman},
+        title  = {CDDT: Fast Approximate 2D Ray Casting for Accelerated Localization},
+        volume = {abs/1705.01167},
+        url    = {http://arxiv.org/abs/1705.01167},
+        year   = {2017}}
+
 ## Code structure
 
 ```
@@ -120,7 +132,7 @@ range_libc_dist/
 
 ![Range Method Performance Comparison](./media/comparison.png)
 
-The above benchmarks were performed on an NVIDIA Jetson TX1 with a single thread. For a better treatment, see the paper associated with this library. Link coming very soon!
+The above benchmarks were performed on an NVIDIA Jetson TX1 with a single thread. For a better treatment, see the paper associated with this library: [http://arxiv.org/abs/1705.01167](http://arxiv.org/abs/1705.01167)
 
 <!--- ///////////////////////////// Bresenham's Line Description ////////////////////////////// -->
 
@@ -189,7 +201,7 @@ Memory: O(|theta_discretization|\*|edge pixels|) - in practice much smaller, due
 
 ### Compressed Directional Distance Transform (CDDT/PCDDT) (ours)
 
-The Compressed Directional Distance Transform (CDDT) algorithm uses a compressed data structure to represent map geometry in a way which allows for fast queries. An optional pruning step removes unneeded elements in the data structure for slightly faster operation (PCDDT). For a full description of the algorithm, see the associated paper (link coming soon). 
+The Compressed Directional Distance Transform (CDDT) algorithm uses a compressed data structure to represent map geometry in a way which allows for fast queries. An optional pruning step removes unneeded elements in the data structure for slightly faster operation (PCDDT). For a full description of the algorithm, see the associated paper: [http://arxiv.org/abs/1705.01167](http://arxiv.org/abs/1705.01167)
 
 #### Pseudocode:
 
