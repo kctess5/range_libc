@@ -151,8 +151,8 @@ cdef class PyOMap:
                 # 0: permissible, -1: unmapped, 100: blocked
                 array_255 = np.array(map_msg.data).reshape((height, width))
 
-                for y in xrange(height):
-                    for x in xrange(width):
+                for x in xrange(height):
+                    for y in xrange(width):
                         if array_255[x,y] > 10:
                             self.thisptr.grid[x][y] = True
 
