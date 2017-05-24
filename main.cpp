@@ -49,9 +49,11 @@ DEFINE_string(lut_slice_theta, "1.57", "Which LUT slice to output");
 #define MAX_DISTANCE 500
 #define THETA_DISC 108
 #define MB (1024.0*1024.0)
-// #ifdef BASEPATH
-// #define FLAGS_log_path BASEPATH "/tmp/basement/"
-// #endif
+
+// this trick is to avoid compiler sadness about the quotations for the BASEPATH define
+#define Q(x) #x
+#define QUOTE(x) Q(x)
+
 
 // grid sample settings
 #define GRID_STEP 10
@@ -90,7 +92,7 @@ int main(int argc, char *argv[])
 	if (FLAGS_map_path == "BASEMENT_MAP") {
 		#ifdef BASEPATH
 		std::cout << "...Loading map" << std::endl;
-		map = OMap(BASEPATH "/maps/basement_hallways_5cm.png");
+		map = OMap(QUOTE(BASEPATH) "/maps/basement_hallways_5cm.png");
 		// #pragma GCC diagnostic push
 		// #pragma GCC diagnostic ignored "-Wunused-result"
 		// (volatile void) chdir(BASEPATH);

@@ -15,13 +15,14 @@ set(CHUNK_THREADS 256)
 # set(CHUNK_SIZE 65536)
 # set(CHUNK_THREADS 256)
 
+
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib")
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib")
 set(CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake)
 
 SET(BASEPATH "${CMAKE_SOURCE_DIR}") 
-add_definitions ( -DBASEPATH="${BASEPATH}" )
+add_definitions ( -DBASEPATH=${BASEPATH} )
 add_subdirectory(${BASEPATH}/vendor/gflags)
 
 # Use the basepath as a search location for includes
@@ -46,7 +47,6 @@ set(CMAKE_CXX_FLAGS "-march=native -ffast-math -fno-math-errno ${CMAKE_CXX_FLAGS
 
 set(CMAKE_BUILD_TYPE Release)
 
-
 if (WITH_CUDA)
 	add_definitions(-DUSE_CUDA=1)
 	add_definitions(-DCHUNK_SIZE=${CHUNK_SIZE})
@@ -59,6 +59,7 @@ if (WITH_CUDA)
 
 	# set(CUDA_TOOLKIT_ROOT_DIR "/usr/local/cuda-7.5")
 	find_package(CUDA REQUIRED)
+
 	cuda_add_executable(range_lib ${CUDA_SRCS})
 	# message(${CUDA_VERSION})
 
