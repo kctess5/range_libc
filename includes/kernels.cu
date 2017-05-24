@@ -7,6 +7,7 @@
 #include <iostream>
 #include <sstream>
 #include <vector>
+#include <stdio.h>
 
 #define DIST_THRESHOLD 0.0
 #define STEP_COEFF 0.999
@@ -195,6 +196,12 @@ __global__ void cuda_eval_sensor_table(float * obs, float * ranges, double * out
 // 	}
 // }
 
+void err_check() {
+	cudaError_t err = cudaGetLastError();
+	if (err != cudaSuccess) 
+    	printf("Error: %s\n", cudaGetErrorString(err));
+}
+
 RayMarchingCUDA::RayMarchingCUDA(std::vector<std::vector<float> > grid, int w, int h, float mr) 
 	: width(w), height(h), max_range(mr) {
 	cudaMalloc((void **)&d_ins, sizeof(float) * CHUNK_SIZE * 3);
@@ -202,10 +209,12 @@ RayMarchingCUDA::RayMarchingCUDA(std::vector<std::vector<float> > grid, int w, i
 	cudaMalloc((void **)&d_distMap, sizeof(float) * width * height);
 
 	// convert vector format to raw float array, y axis is quickly changing dimension
-	float raw_grid[width*height];
+	// float raw_grid[width*height];
+	float *raw_grid = new float[width*height];
 	for (int i = 0; i < width; ++i) std::copy(grid[i].begin(), grid[i].end(), &raw_grid[i*height]);
 
 	cudaMemcpy(d_distMap, raw_grid, width*height*sizeof(float), cudaMemcpyHostToDevice);
+	free(raw_grid);
 }
 
 RayMarchingCUDA::~RayMarchingCUDA() {
@@ -225,6 +234,8 @@ void RayMarchingCUDA::calc_range_many(float *ins, float *outs, int num_casts) {
 	cudaMemcpy(d_ins, ins, sizeof(float) * num_casts * 3,cudaMemcpyHostToDevice);
 	// execute queries on the GPU
 	cuda_ray_marching<<< CHUNK_SIZE / NUM_THREADS, NUM_THREADS >>>(d_ins,d_outs, d_distMap, width, height, max_range, num_casts);
+	err_check();
+
 	// copy results back to CPU
 	cudaMemcpy(outs,d_outs,sizeof(float)*num_casts,cudaMemcpyDeviceToHost);
 	cudaDeviceSynchronize();
@@ -238,6 +249,7 @@ void RayMarchingCUDA::numpy_calc_range(float *ins, float *outs, int num_casts) {
 	// execute queries on the GPU, have to pass coordinate space conversion constants
 	cuda_ray_marching_world_to_grid<<< CHUNK_SIZE / NUM_THREADS, NUM_THREADS >>>(d_ins,d_outs, d_distMap, width, height, max_range,
 		num_casts, world_origin_x, world_origin_y, world_scale, inv_world_scale, world_sin_angle, world_cos_angle, rotation_const);
+	err_check();
 	// copy results back to CPU
 	cudaMemcpy(outs,d_outs,sizeof(float)*num_casts,cudaMemcpyDeviceToHost);
 	cudaDeviceSynchronize();
@@ -257,6 +269,7 @@ void RayMarchingCUDA::numpy_calc_range_angles(float * ins, float * angles, float
 	// execute queries on the GPU, have to pass coordinate space conversion constants
 	cuda_ray_marching_angles_world_to_grid<<< CHUNK_SIZE / NUM_THREADS, NUM_THREADS >>>(d_ins,d_outs, d_distMap, width, height, max_range,
 		num_particles, num_angles, world_origin_x, world_origin_y, world_scale, inv_world_scale, world_sin_angle, world_cos_angle, rotation_const);
+	err_check();
 	// copy results back to CPU
 	cudaMemcpy(outs,d_outs,sizeof(float)*num_particles*num_angles,cudaMemcpyDeviceToHost);
 	cudaDeviceSynchronize();

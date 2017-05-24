@@ -1961,6 +1961,36 @@ namespace benchmark {
 			std::cout << " -total time: " << t_accum << " sec" << std::endl;
 		}
 
+		void grid_sample2(int step_size, int num_rays, int samples) {
+			float coeff = (2.0 * M_PI) / num_rays;
+			double t_accum = 0;
+
+			if (log) (*log) << "x,y,theta,time" << std::endl;
+			if (log) (*log) << std::fixed;
+			if (log) (*log) << std::setprecision(9);
+
+			int num_samples = num_grid_samples(step_size, num_rays, samples, map->width, map->height);
+			float *samps = new float[num_samples*3];
+			float *outs = new float[num_samples];
+			get_grid_samples(samps, step_size, num_rays, samples, map->width, map->height);
+
+			auto start_time = std::chrono::high_resolution_clock::now();
+			for (int i = 0; i < num_samples; ++i)
+				outs[i] = range.calc_range(samps[i*3],samps[i*3+1],samps[i*3+2]);
+			auto end_time = std::chrono::high_resolution_clock::now();
+			std::chrono::duration<double> time_span = std::chrono::duration_cast<std::chrono::duration<double>>(end_time - start_time);
+			t_accum += time_span.count();
+
+			// print first few outputs for sanity checking
+			for (int i = 0; i < 10; ++i)
+				std::cout << outs[i] << std::endl;
+
+			std::cout << "finished grid sample after: " << (float) t_accum << " sec" << std::endl;
+			std::cout << " -avg time per ray: " << ( t_accum / (float) num_samples) << " sec" << std::endl;
+			std::cout << " -rays cast: " << num_samples << std::endl;
+			std::cout << " -total time: " << t_accum << " sec" << std::endl;
+		}
+
 		static int num_grid_samples(int step_size, int num_rays, int samples, int map_width, int map_height) {
 			int num_samples = 0;
 			for (int i = 0; i < num_rays; ++i)

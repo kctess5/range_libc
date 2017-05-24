@@ -183,6 +183,7 @@ int main(int argc, char *argv[])
 			std::chrono::duration_cast<std::chrono::duration<double>>(construction_end - construction_start);
 		Benchmark<RayMarching> mark = Benchmark<RayMarching>(rm);
 		std::cout << "...construction time: " << construction_dur.count() << std::endl;
+		std::cout << "...memory usage (MB): " << rm.memory() / MB << std::endl;
 		std::cout << "...Running grid benchmark" << std::endl;
 		if (DO_LOG) {
 			tlog.str("");
@@ -190,7 +191,7 @@ int main(int argc, char *argv[])
 			summary << "rm," << construction_dur.count() << "," << rm.memory() << std::endl;
 		}
 		if (FLAGS_which_benchmark == "grid")
-			mark.grid_sample(GRID_STEP, GRID_RAYS, GRID_SAMPLES);
+			mark.grid_sample2(GRID_STEP, GRID_RAYS, GRID_SAMPLES);
 		else if (FLAGS_which_benchmark == "random")
 			mark.random_sample(RANDOM_SAMPLES);
 
@@ -343,6 +344,9 @@ int main(int argc, char *argv[])
 			std::cout << ".....avg time per ray cast: " << mark_dur.count() / num_samples << std::endl;
 			std::cout << ".....rays cast: " << num_samples << std::endl;
 
+			// print first few outputs for sanity checking
+			for (int i = 0; i < 10; ++i)
+				std::cout << outs[i] << std::endl;
 		}
 		
 		if (FLAGS_which_benchmark == "random") {
