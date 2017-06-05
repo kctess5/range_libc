@@ -78,8 +78,7 @@ void save_log(std::stringstream &log, std::string path) {
 	save_log(log,path.c_str());
 }
 
-int main(int argc, char *argv[])
-{
+int main(int argc, char *argv[]) {
 	// set usage message
 	std::string usage("This library provides fast 2D ray casting on occupancy grid maps.  Sample usage:\n\n");
 	usage += "   ";
@@ -99,8 +98,7 @@ int main(int argc, char *argv[])
 		// #pragma GCC diagnostic pop
 		#else
 		std::cout << "BASEPATH not defined, map paths may not resolve correctly." << std::endl;
-		#endif
-		
+		#endif		
 	} else {
 		map = OMap(FLAGS_map_path);
 	}
@@ -131,6 +129,12 @@ int main(int argc, char *argv[])
 	
 
 	std::vector<std::string> methods = utils::split(FLAGS_method, ',');
+
+
+	std::cout << "methods: ";
+	for (int i = 0; i < methods.size(); ++i)
+		std::cout << methods[i];
+	std::cout << std::endl;
 
 	if (utils::has("BresenhamsLine", methods) || utils::has("bl", methods)) {
 		std::cout << "\n...Loading range method: BresenhamsLine" << std::endl;
@@ -227,6 +231,7 @@ int main(int argc, char *argv[])
 		double const_dur = 0;
 		if (utils::has("CDDTCast", methods) || utils::has("cddt", methods)) {
 			std::cout << "\n...Loading range method: CDDTCast" << std::endl;
+			std::cout << "...construction time: " << construction_dur.count() << std::endl;
 			std::cout << "...lut size (MB): " << rc.memory() / MB << std::endl;
 			Benchmark<CDDTCast> mark = Benchmark<CDDTCast>(rc);
 			std::cout << "...Running grid benchmark" << std::endl;
@@ -279,6 +284,77 @@ int main(int argc, char *argv[])
 			save_log(cddt_serialized, FLAGS_cddt_save_path.c_str());
 		}
 	}
+
+
+	if (utils::has("CDDTCast2", methods) || utils::has("cddt2", methods)
+		|| utils::has("PrunedCDDTCast2", methods) || utils::has("pcddt2", methods)) {
+		auto construction_start = std::chrono::high_resolution_clock::now();
+		CDDTCast2 rc = CDDTCast2(map, MAX_DISTANCE, THETA_DISC);
+		auto construction_end = std::chrono::high_resolution_clock::now();
+		std::chrono::duration<double> construction_dur = 
+			std::chrono::duration_cast<std::chrono::duration<double>>(construction_end - construction_start);
+
+		double const_dur = 0;
+		if (utils::has("CDDTCast2", methods) || utils::has("cddt2", methods)) {
+			std::cout << "\n...Loading range method: CDDTCast2" << std::endl;
+			std::cout << "...construction time: " << construction_dur.count() << std::endl;
+			std::cout << "...lut size (MB): " << rc.memory() / MB << std::endl;
+			rc.flatten();
+			Benchmark<CDDTCast2> mark = Benchmark<CDDTCast2>(rc);
+			std::cout << "...Running grid benchmark" << std::endl;
+			if (DO_LOG) {
+				tlog.str("");
+				mark.set_log(&tlog);
+				summary << "cddt2," << construction_dur.count() << "," << rc.memory() << std::endl;
+			}
+			if (FLAGS_which_benchmark == "grid")
+				mark.grid_sample(GRID_STEP, GRID_RAYS, GRID_SAMPLES);
+			else if (FLAGS_which_benchmark == "random")
+				mark.random_sample(RANDOM_SAMPLES);
+			if (DO_LOG) {
+				save_log(tlog, FLAGS_log_path+"/cddt2.csv");
+			}
+		}
+
+		if (utils::has("PrunedCDDTCast2", methods) || utils::has("pcddt", methods)) {
+			std::cout << "\n...Loading range method: PrunedCDDTCast2" << std::endl;
+			
+
+			auto prune_start = std::chrono::high_resolution_clock::now();
+			rc.prune(MAX_DISTANCE);
+			auto prune_end = std::chrono::high_resolution_clock::now();
+			std::chrono::duration<double> prune_dur = 
+				std::chrono::duration_cast<std::chrono::duration<double>>(prune_end - prune_start);
+
+
+			std::cout << "...pruned lut size (MB): " << rc.memory() / MB << std::endl;
+			Benchmark<CDDTCast2> mark = Benchmark<CDDTCast2>(rc);
+			std::cout << "...Running grid benchmark" << std::endl;
+			if (DO_LOG) {
+				tlog.str("");
+				mark.set_log(&tlog);
+				summary << "pcddt2," << construction_dur.count() + prune_dur.count() << "," << rc.memory() << std::endl;
+			}
+			if (FLAGS_which_benchmark == "grid")
+				mark.grid_sample(GRID_STEP, GRID_RAYS, GRID_SAMPLES);
+			else if (FLAGS_which_benchmark == "random")
+				mark.random_sample(RANDOM_SAMPLES);
+			if (DO_LOG) {
+				save_log(tlog, FLAGS_log_path+"/pcddt2.csv");
+			}
+		}
+
+		if (!FLAGS_cddt_save_path.empty()) {\
+			std::cout << "...saving CDDT2 to:" << FLAGS_cddt_save_path<< std::endl;
+			std::stringstream cddt_serialized;
+			rc.serializeJson(&cddt_serialized);
+			save_log(cddt_serialized, FLAGS_cddt_save_path.c_str());
+		}
+	}
+
+
+
+
 
 	if (utils::has("GiantLUTCast", methods) || utils::has("glt", methods)) {
 		std::cout << "\n...Loading range method: GiantLUTCast" << std::endl;
