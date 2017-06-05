@@ -986,13 +986,17 @@ namespace ranges {
 			// the angle for each theta discretization bin
 			std::vector<float> angles;
 
+			// cache these to avoid a lot of allocs
+			int i = 0, a = 0;
+			float angle = 0;
+
 			// compute useful constants and cache for later use
-			for (int i = 0; i < theta_discretization; ++i)
+			for (i = 0; i < theta_discretization; ++i)
 			{
 				#if _USE_CACHED_CONSTANTS
-				float angle = i * M_2PI_div_theta_discretization;
+				angle = i * M_2PI_div_theta_discretization;
 				#else
-				float angle = M_2PI * i / theta_discretization;
+				angle = M_2PI * i / theta_discretization;
 				#endif
 				angles.push_back(angle);
 
@@ -1060,11 +1064,10 @@ namespace ranges {
 			}
 
 			// build the empty LUT datastructure
-			for (int a = 0; a < theta_discretization; ++a)
+			for (a = 0; a < theta_discretization; ++a)
 			{
 				std::vector<std::vector<float> > projection_lut;
-				for (int i = 0; i < lut_widths[a]; ++i)
-				// for (int i = 0; i < 10; ++i)
+				for (i = 0; i < lut_widths[a]; ++i)
 				{
 					std::vector<float> column;
 					projection_lut.push_back(column);
@@ -1079,38 +1082,35 @@ namespace ranges {
 
 			// fill the LUT datastructure by projecting each occupied pixel into LUT space and storing
 			// the x position in LUT space at the correct place as determined by y position and theta
-			for (int x = 0; x < map.width; ++x) {
-				for (int y = 0; y < map.height; ++y) {
+			// cache these to avoid a lot of allocs
+			int x = 0, y = 0;
+			int upper_bin = 0, lower_bin = 0;
+			float half_lut_space_width = 0, lut_space_center_x = 0, lut_space_center_y = 0;
+			float cosangle = 0, sinangle = 0;
+			for (x = 0; x < map.width; ++x) {
+				for (y = 0; y < map.height; ++y) {
 					// if (map.isOccupied(x,y)) {
 						if (edge_map.isOccupied(x,y)) {
 						// this (x,y) is occupied, so add it to the datastruture
 						std::pair<float, float> pixel_center =  std::make_pair(x + 0.5, y + 0.5);
-						for (int a = 0; a < theta_discretization / 2.0; ++a) {
+						for (a = 0; a < theta_discretization / 2.0; ++a) {
 							#if _USE_CACHED_TRIG == 1
-							float cosangle = cos_values[a];
-							float sinangle = sin_values[a];
+							cosangle = cos_values[a];
+							sinangle = sin_values[a];
 							#else
-							float angle = angles[a];
-							float cosangle = cosf(angle);
-							float sinangle = sinf(angle);
+							angle = angles[a];
+							cosangle = cosf(angle);
+							sinangle = sinf(angle);
 							#endif
 
-							float half_lut_space_width = (std::abs(sinangle) + std::abs(cosangle)) / 2.0;
+							half_lut_space_width = (std::abs(sinangle) + std::abs(cosangle)) / 2.0;
+							lut_space_center_x = pixel_center.first * cosangle - pixel_center.second * sinangle;
+							lut_space_center_y = (pixel_center.first * sinangle + pixel_center.second * cosangle) + lut_translations[a];
 
-							float lut_space_center_x = pixel_center.first * cosangle - pixel_center.second * sinangle;
-							float lut_space_center_y = (pixel_center.first * sinangle + pixel_center.second * cosangle) + lut_translations[a];
+							upper_bin = lut_space_center_y + half_lut_space_width - _EPSILON;
+							lower_bin = lut_space_center_y - half_lut_space_width + _EPSILON;
 
-							int upper_bin = lut_space_center_y + half_lut_space_width - _EPSILON;
-							int lower_bin = lut_space_center_y - half_lut_space_width + _EPSILON;
-
-							// the following is a quick hack to prevent problems in the cardinal directions
-							// where it has been known to see through walls
-							// if (std::fmod(angle, M_PI/2.0) < _EPSILON) {
-							// 	upper_bin++;
-							// 	lower_bin--;
-							// }
-
-							for (int i = lower_bin; i <= upper_bin; ++i) 
+							for (i = lower_bin; i <= upper_bin; ++i) 
 								compressed_lut[a][i].push_back(lut_space_center_x);
 
 							// std::cout << std::endl;
@@ -1128,9 +1128,9 @@ namespace ranges {
 			}
 
 			// sort the vectors for faster lookup with binary search
-			for (int a = 0; a < theta_discretization; ++a)
+			for (a = 0; a < theta_discretization; ++a)
 			{
-				for (int i = 0; i < compressed_lut[a].size(); ++i)
+				for (i = 0; i < compressed_lut[a].size(); ++i)
 				{
 					// sort the vectors
 					std::sort(compressed_lut[a][i].begin(), compressed_lut[a][i].end());
@@ -1145,9 +1145,9 @@ namespace ranges {
 			#endif
 
 			#if _TRACK_COLLISION_INDEXES == 1
-			for (int a = 0; a < theta_discretization; ++a) {
+			for (a = 0; a < theta_discretization; ++a) {
 				std::vector<std::set<int> > projection_lut_tracker;
-				for (int i = 0; i < lut_widths[a]; ++i)
+				for (i = 0; i < lut_widths[a]; ++i)
 				{
 					std::set<int> collection;
 					projection_lut_tracker.push_back(collection);
