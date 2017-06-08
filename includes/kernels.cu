@@ -9,14 +9,20 @@
 #include <vector>
 #include <stdio.h>
 
+#define USE_CONST_ANNOTATIONS 1
+
 #define DIST_THRESHOLD 0.0
 #define STEP_COEFF 0.999
 
-__device__ float distance(int x, int y, float *distMap, int width, int height) {
+__device__ float distance(int x, int y, const float *distMap, int width, int height) {
 	return distMap[x * height + y];
 }
 
+#if USE_CONST_ANNOTATIONS == 1
+__global__ void cuda_ray_marching(const float * ins, float * outs, const float * distMap, int width, int height, float max_range, int num_casts) {
+#else
 __global__ void cuda_ray_marching(float * ins, float * outs, float * distMap, int width, int height, float max_range, int num_casts) {
+#endif
 	int ind = blockIdx.x*blockDim.x + threadIdx.x;
 	if (ind >= num_casts) return; 
 	float x0 = ins[ind*3];
@@ -199,12 +205,36 @@ __global__ void cuda_eval_sensor_table(float * obs, float * ranges, double * out
 __constant__ unsigned short constData[CONST_MEMORY_SIZE];
 
 // store:
-// 	- lut_translations : float
 // 	- d_lut_slice_widths : int
 
+__device__ bool is_occupied(int x, int y, const bool *d_map, int height) {
+	return d_map[x * height + y];
+}
 
-// d_compressed_lut_ptr, d_compressed_lut_index, d_lut_slice_widths, d_lut_bin_widths
-__global__ void cuda_cddt(float * ins, float * outs, int width, int height, float max_range, int num_casts, int theta_discretization, int max_lut_width, float *d_compressed_lut_ptr, float **d_compressed_lut_index, unsigned short *d_lut_slice_widths, unsigned short *d_lut_bin_widths) {
+
+
+
+#if USE_CONST_ANNOTATIONS == 1
+__global__ void cuda_cddt(
+	const float * __restrict__ ins, 
+	float * outs, 
+	const bool * __restrict__ d_map, 
+	int width, int height, float max_range, int num_casts, int theta_discretization, int max_lut_width, 
+	const float * __restrict__ d_compressed_lut_ptr, 
+	const float * const * __restrict__ d_compressed_lut_index, 
+	const unsigned short * __restrict__ d_lut_slice_widths, 
+	const unsigned short * __restrict__ d_lut_bin_widths) {
+#else
+__global__ void cuda_cddt(
+	float * ins, 
+	float * outs, 
+	bool * d_map,
+	int width, int height, float max_range, int num_casts, int theta_discretization, int max_lut_width, 
+	float * d_compressed_lut_ptr, 
+	float * * d_compressed_lut_index, 
+	unsigned short * d_lut_slice_widths, 
+	unsigned short * d_lut_bin_widths) {
+#endif
 	
 	int ind = blockIdx.x*blockDim.x + threadIdx.x;
 	if (ind >= num_casts) return; 
@@ -262,7 +292,11 @@ __global__ void cuda_cddt(float * ins, float * outs, int width, int height, floa
 	}
 
 	// get the lut bin using the lut index
+	#if USE_CONST_ANNOTATIONS == 1
+	const float *lut_bin = d_compressed_lut_index[angle_index*max_lut_width+lut_index];
+	#else
 	float *lut_bin = d_compressed_lut_index[angle_index*max_lut_width+lut_index];
+	#endif
 
 	// get the lut bin width using d_lut_bin_widths
 	int lut_bin_width = d_lut_bin_widths[angle_index*max_lut_width+lut_index];
@@ -288,6 +322,11 @@ __global__ void cuda_cddt(float * ins, float * outs, int width, int height, floa
 
 		// TODO
 		// if (map.grid[x][y]) { return 0.0; }
+		// if (d_map[int(x) * height + int(y)]) {
+		if (is_occupied(x, y, d_map, height)) {
+			outs[ind] = 0.0;
+			return;
+		}
 
 		for (int i = high; i >= 0; --i) {
 			float obstacle_x = lut_bin[i];
@@ -312,6 +351,11 @@ __global__ void cuda_cddt(float * ins, float * outs, int width, int height, floa
 		// this call is here rather than at the beginning, because it is apparently more efficient.
 		// I presume that this has to do with the previous two return statements
 		// if (map.grid[x][y]) { return 0.0; }
+		// if (d_map[x * height + y]) {
+		if (is_occupied(x, y, d_map, height)) {
+			outs[ind] = 0.0;
+			return;
+		}
 
 		// linear search for neighbor in lut bin
 		for (int i = 0; i < lut_bin_width; ++i)
@@ -483,15 +527,26 @@ CDDTCUDA::CDDTCUDA(std::vector<std::vector<bool> > grid, int w, int h, float mr,
 	: is_initialized(false), theta_discretization(theta_disc), width(w), height(h), max_range(mr) {
 	cudaMalloc((void **)&d_ins, sizeof(float) * CHUNK_SIZE * 3);
 	cudaMalloc((void **)&d_outs, sizeof(float) * CHUNK_SIZE);
+	cudaMalloc((void **)&d_map, sizeof(bool) * width * height);
+
+	// convert vector format to raw bool array, y axis is quickly changing dimension
+	bool *raw_grid = new bool[width*height];
+	for (int i = 0; i < width; ++i) std::copy(grid[i].begin(), grid[i].end(), &raw_grid[i*height]);
+	cudaMemcpy(d_map, raw_grid, width*height*sizeof(bool), cudaMemcpyHostToDevice);
+	free(raw_grid);
+
 }
 CDDTCUDA::~CDDTCUDA() {
-	cudaFree(d_compressed_lut_ptr);
-	cudaFree(d_compressed_lut_index);
-	cudaFree(d_lut_slice_widths);
-	cudaFree(d_lut_bin_widths);
+	if (is_initialized) {
+		cudaFree(d_compressed_lut_ptr);
+		cudaFree(d_compressed_lut_index);
+		cudaFree(d_lut_slice_widths);
+		cudaFree(d_lut_bin_widths);
+	}
 
 	cudaFree(d_ins);
 	cudaFree(d_outs);
+	cudaFree(d_map);
 }
 
 void CDDTCUDA::init_buffers(float *compressed_lut_ptr, unsigned int *compressed_lut_index, unsigned short *lut_slice_widths, unsigned short *lut_bin_widths, int num_lut_els, int max_lut_w, float *lut_translations) {
@@ -548,7 +603,7 @@ void CDDTCUDA::calc_range_many(float *ins, float *outs, int num_casts) {
 	// copy queries to GPU buffer
 	cudaMemcpy(d_ins, ins, sizeof(float) * num_casts * 3,cudaMemcpyHostToDevice);
 	// execute queries on the GPU
-	cuda_cddt<<< CHUNK_SIZE / NUM_THREADS, NUM_THREADS >>>(d_ins,d_outs, width, height, max_range, num_casts, theta_discretization, max_lut_width, d_compressed_lut_ptr, d_compressed_lut_index, d_lut_slice_widths, d_lut_bin_widths);
+	cuda_cddt<<< CHUNK_SIZE / NUM_THREADS, NUM_THREADS >>>(d_ins,d_outs, d_map, width, height, max_range, num_casts, theta_discretization, max_lut_width, d_compressed_lut_ptr, d_compressed_lut_index, d_lut_slice_widths, d_lut_bin_widths);
 	err_check();
 
 	// copy results back to CPU

@@ -1223,8 +1223,6 @@ namespace ranges {
 				float sinangle = sinf(angle);
 				#endif
 
-				// float cosangle = cos_values[angle_index];
-				// float sinangle = sin_values[angle_index];
 				float translation = lut_translations[angle_index];
 				
 				float lut_space_x;
@@ -1288,6 +1286,8 @@ namespace ranges {
 			std::cout << "OLD LUT SIZE (MB): " << lut_size() / 1000000.0 << std::endl;
 			#endif
 
+			// apply_collision_table(local_collision_table);
+
 			for (int a = 0; a < theta_discretization / 2.0; ++a) {
 				for (int lut_index = 0; lut_index < compressed_lut[a].size(); ++lut_index) {
 					std::vector<float> pruned_bin;
@@ -1303,6 +1303,11 @@ namespace ranges {
 			#if _TRACK_LUT_SIZE == 1
 			std::cout << "NEW LUT SIZE (MB): " << lut_size() / 1000000.0 << std::endl;
 			#endif
+		}
+
+		// prunes the LUT according to the given collision table
+		void apply_collision_table(std::vector<std::vector<std::set<int> > > collision_table) {
+
 		}
 
 		// takes a continuous theta space and returns the nearest theta in the discrete LUT space
@@ -2372,9 +2377,9 @@ namespace ranges {
 			float cosangle = cos_values[angle_index];
 			float sinangle = sin_values[angle_index];
 			#else
-			float cosangle; // = cosf(discrete_theta);
-			float sinangle; // = sinf(discrete_theta);
-			__sincosf(discrete_theta, &sinangle, &cosangle);
+			float cosangle = cosf(discrete_theta);
+			float sinangle = sinf(discrete_theta);
+			// __sincosf(discrete_theta, &sinangle, &cosangle);
 			#endif
 
 			// compute LUT translation

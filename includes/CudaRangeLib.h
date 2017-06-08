@@ -84,4 +84,5 @@ protected:
 
 	float *d_ins;
 	float *d_outs;
+	bool *d_map;
 };
