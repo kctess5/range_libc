@@ -183,6 +183,162 @@ __global__ void cuda_eval_sensor_table(float * obs, float * ranges, double * out
 	}
 }
 
+
+
+
+
+#ifndef M_2PI
+#define M_2PI 6.28318530718
+#endif
+
+#ifndef _EPSILON
+#define _EPSILON 0.00001
+#endif
+
+#define CONST_MEMORY_SIZE 2048
+__constant__ unsigned short constData[CONST_MEMORY_SIZE];
+
+// store:
+// 	- lut_translations : float
+// 	- d_lut_slice_widths : int
+
+
+// d_compressed_lut_ptr, d_compressed_lut_index, d_lut_slice_widths, d_lut_bin_widths
+__global__ void cuda_cddt(float * ins, float * outs, int width, int height, float max_range, int num_casts, int theta_discretization, int max_lut_width, float *d_compressed_lut_ptr, float **d_compressed_lut_index, unsigned short *d_lut_slice_widths, unsigned short *d_lut_bin_widths) {
+	
+	int ind = blockIdx.x*blockDim.x + threadIdx.x;
+	if (ind >= num_casts) return; 
+	float x = ins[ind*3];
+	float y = ins[ind*3+1];
+	float heading = -ins[ind*3+2];
+
+	// discretize theta
+	float theta = fmodf(heading, M_2PI);
+	// fmod does not wrap the angle into the positive range, so this will fix that if necessary
+	if (theta < 0.0) theta += M_2PI;
+
+	bool is_flipped = false;
+	if (theta >= M_PI) {
+		is_flipped = true;
+		theta -= M_PI;
+	}
+
+	int rounded = rintf(theta * theta_discretization / M_2PI);
+
+	// this handles the special case where the theta rounds up and should wrap around
+	if (rounded == theta_discretization >> 1) {
+		rounded = 0;
+		is_flipped = !is_flipped;
+	}
+
+	int angle_index = fmodf(rounded, theta_discretization);
+	float discrete_angle = (angle_index * M_2PI) / ((float) theta_discretization);
+	// project into lut space
+	float cosangle;
+	float sinangle;
+	sincosf(discrete_angle, &sinangle, &cosangle);
+
+	// compute LUT translation
+	float left_top_corner_y     = height*cosangle;
+	float right_bottom_corner_y = width*sinangle;
+	float right_top_corner_y    = right_bottom_corner_y + left_top_corner_y;
+	float min_corner_y = fminf(left_top_corner_y, fminf(right_top_corner_y, right_bottom_corner_y));
+	float lut_translation = fminf(0.0, -1.0 * min_corner_y - _EPSILON);
+
+	// float lut_translation = constData[angle_index];
+
+	// do coordinate space projection
+	float lut_space_x = x * cosangle - y * sinangle;
+	float lut_space_y = (x * sinangle + y * cosangle) + lut_translation;
+
+	// Convert a float to a signed integer in round-down mode.
+	int lut_index = __float2int_rd(lut_space_y);
+
+	// check d_lut_slice_widths if query is out of map
+	// if (lut_index < 0 || lut_index >= d_lut_slice_widths[angle_index]) {
+	if (lut_index < 0 || lut_index >= constData[angle_index]) {
+		outs[ind] = max_range;
+		return;
+	}
+
+	// get the lut bin using the lut index
+	float *lut_bin = d_compressed_lut_index[angle_index*max_lut_width+lut_index];
+
+	// get the lut bin width using d_lut_bin_widths
+	int lut_bin_width = d_lut_bin_widths[angle_index*max_lut_width+lut_index];
+
+	if (lut_bin_width == 0) {
+		outs[ind] = max_range;
+		return;
+	}
+
+	int low = 0;
+	int high = lut_bin_width - 1;
+
+	if (is_flipped) {
+		// the furthest entry is behind the query point
+		if (lut_bin[low] > lut_space_x) {
+			outs[ind] = max_range;
+			return;
+		}
+		if (lut_bin[high]< lut_space_x) {
+			outs[ind] = lut_space_x - lut_bin[high];
+			return;
+		}
+
+		// TODO
+		// if (map.grid[x][y]) { return 0.0; }
+
+		for (int i = high; i >= 0; --i) {
+			float obstacle_x = lut_bin[i];
+			if (obstacle_x <= lut_space_x) {
+				outs[ind] = lut_space_x - obstacle_x;
+				return;
+			}
+		}
+	} else {
+		// the furthest entry is behind the query point
+		if (lut_bin[high] < lut_space_x) {
+			outs[ind] = max_range;
+			return;
+		}
+		if (lut_bin[low] > lut_space_x) {
+			outs[ind] = lut_bin[low] - lut_space_x;
+			return;
+		}
+
+		// TODO
+		// the query point is on top of a occupied pixel
+		// this call is here rather than at the beginning, because it is apparently more efficient.
+		// I presume that this has to do with the previous two return statements
+		// if (map.grid[x][y]) { return 0.0; }
+
+		// linear search for neighbor in lut bin
+		for (int i = 0; i < lut_bin_width; ++i)
+		{
+			float obstacle_x = lut_bin[i];
+			if (obstacle_x >= lut_space_x) {
+				outs[ind] = obstacle_x - lut_space_x;
+				return;
+			}
+		}
+	}
+
+	// check a few edge cases before search
+	// 
+	// 
+	// 
+	// 
+	// make sure this pixel is not occupied in the source map
+	// perform linear search through the lut bin to find neighbor in the lut
+	// return the distance to the neighbor
+	outs[ind] = -1.0;
+}
+
+
+
+
+
 // this should be optimized to use shared memory, otherwise the random read performance is not great
 // __global__ void cuda_accumulate_weights(float * obs, float * ranges, double * outs, double * sensorTable, int rays_per_particle, int particles, float inv_world_scale, int max_range) {
 // 	int ind = blockIdx.x*blockDim.x + threadIdx.x;
@@ -313,3 +469,95 @@ void RayMarchingCUDA::calc_range_repeat_angles_eval_sensor_model(float * ins, fl
 	std::cout << "GPU numpy_calc_range_angles only works with ROS world to grid conversion enabled" << std::endl;
 	#endif
 }
+
+
+
+
+
+
+///////////////////////////////////////////////////////////
+
+
+
+CDDTCUDA::CDDTCUDA(std::vector<std::vector<bool> > grid, int w, int h, float mr, int theta_disc) 
+	: is_initialized(false), theta_discretization(theta_disc), width(w), height(h), max_range(mr) {
+	cudaMalloc((void **)&d_ins, sizeof(float) * CHUNK_SIZE * 3);
+	cudaMalloc((void **)&d_outs, sizeof(float) * CHUNK_SIZE);
+}
+CDDTCUDA::~CDDTCUDA() {
+	cudaFree(d_compressed_lut_ptr);
+	cudaFree(d_compressed_lut_index);
+	cudaFree(d_lut_slice_widths);
+	cudaFree(d_lut_bin_widths);
+
+	cudaFree(d_ins);
+	cudaFree(d_outs);
+}
+
+void CDDTCUDA::init_buffers(float *compressed_lut_ptr, unsigned int *compressed_lut_index, unsigned short *lut_slice_widths, unsigned short *lut_bin_widths, int num_lut_els, int max_lut_w, float *lut_translations) {
+	std::cout << "Initializing buffers on device..." << std::endl;
+	max_lut_width = max_lut_w;
+	if (is_initialized) {
+		std::cout << "...freeing old buffers" << std::endl;
+		cudaFree(d_compressed_lut_ptr);
+		cudaFree(d_compressed_lut_index);
+		cudaFree(d_lut_slice_widths);
+		cudaFree(d_lut_bin_widths);
+	}
+
+	// allocate space on the device for the CDDT structure
+	cudaMalloc((void **)&d_compressed_lut_ptr, num_lut_els*sizeof(float));
+	cudaMalloc((void **)&d_compressed_lut_index, max_lut_width*theta_discretization*sizeof(float**));
+	cudaMalloc((void **)&d_lut_slice_widths, theta_discretization*sizeof(unsigned short));
+	cudaMalloc((void **)&d_lut_bin_widths, max_lut_width*theta_discretization*sizeof(unsigned short));
+
+	// copy LUT translations
+	// cudaMemcpyToSymbol(constData, lut_translations, theta_discretization*sizeof(float));
+	cudaMemcpyToSymbol(constData, lut_slice_widths, theta_discretization*sizeof(unsigned short));
+
+	// copy cddt data structure
+	cudaMemcpy(d_compressed_lut_ptr, compressed_lut_ptr, num_lut_els*sizeof(float), cudaMemcpyHostToDevice);
+
+	// copy size metadata
+	cudaMemcpy(d_lut_slice_widths, lut_slice_widths, 
+		theta_discretization*sizeof(unsigned short), cudaMemcpyHostToDevice);
+	cudaMemcpy(d_lut_bin_widths, lut_bin_widths, 
+		max_lut_width*theta_discretization*sizeof(unsigned short), cudaMemcpyHostToDevice);
+	
+	// build device pointer index on the host
+	float **device_pointer_index = (float **) malloc(max_lut_width*theta_discretization*sizeof(float**));
+	for (int i = 0; i < theta_discretization*max_lut_width; ++i) {
+		device_pointer_index[i] = &d_compressed_lut_ptr[compressed_lut_index[i]];
+	}
+
+	// move the pointer index to the device
+	cudaMemcpy(d_compressed_lut_index, device_pointer_index, 
+		max_lut_width*theta_discretization*sizeof(float**), cudaMemcpyHostToDevice);
+
+	is_initialized = true;
+	free(device_pointer_index);
+}
+
+void CDDTCUDA::calc_range_many(float *ins, float *outs, int num_casts) {
+	if (!is_initialized) {
+		std::cout << "Must initialize GPU buffers before using calc_range_many" << std::endl;
+		return;
+	}
+	// std::cout << "cuda calc range" << std::endl;
+
+	// copy queries to GPU buffer
+	cudaMemcpy(d_ins, ins, sizeof(float) * num_casts * 3,cudaMemcpyHostToDevice);
+	// execute queries on the GPU
+	cuda_cddt<<< CHUNK_SIZE / NUM_THREADS, NUM_THREADS >>>(d_ins,d_outs, width, height, max_range, num_casts, theta_discretization, max_lut_width, d_compressed_lut_ptr, d_compressed_lut_index, d_lut_slice_widths, d_lut_bin_widths);
+	err_check();
+
+	// copy results back to CPU
+	cudaMemcpy(outs,d_outs,sizeof(float)*num_casts,cudaMemcpyDeviceToHost);
+	cudaDeviceSynchronize();
+}
+
+
+
+
+
+

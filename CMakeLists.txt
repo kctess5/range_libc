@@ -47,6 +47,8 @@ set(CMAKE_CXX_FLAGS "-march=native -ffast-math -fno-math-errno ${CMAKE_CXX_FLAGS
 
 set(CMAKE_BUILD_TYPE Release)
 
+set(CUDA_NVCC_FLAGS ${CUDA_NVCC_FLAGS};--use_fast_math -O3)
+
 if (WITH_CUDA)
 	add_definitions(-DUSE_CUDA=1)
 	add_definitions(-DCHUNK_SIZE=${CHUNK_SIZE})

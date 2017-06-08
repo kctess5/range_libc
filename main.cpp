@@ -285,7 +285,6 @@ int main(int argc, char *argv[]) {
 		}
 	}
 
-
 	if (utils::has("CDDTCast2", methods) || utils::has("cddt2", methods)
 		|| utils::has("PrunedCDDTCast2", methods) || utils::has("pcddt2", methods)) {
 		auto construction_start = std::chrono::high_resolution_clock::now();
@@ -344,17 +343,13 @@ int main(int argc, char *argv[]) {
 			}
 		}
 
-		if (!FLAGS_cddt_save_path.empty()) {\
-			std::cout << "...saving CDDT2 to:" << FLAGS_cddt_save_path<< std::endl;
-			std::stringstream cddt_serialized;
-			rc.serializeJson(&cddt_serialized);
-			save_log(cddt_serialized, FLAGS_cddt_save_path.c_str());
-		}
+		// if (!FLAGS_cddt_save_path.empty()) {\
+		// 	std::cout << "...saving CDDT2 to:" << FLAGS_cddt_save_path<< std::endl;
+		// 	std::stringstream cddt_serialized;
+		// 	rc.serializeJson(&cddt_serialized);
+		// 	save_log(cddt_serialized, FLAGS_cddt_save_path.c_str());
+		// }
 	}
-
-
-
-
 
 	if (utils::has("GiantLUTCast", methods) || utils::has("glt", methods)) {
 		std::cout << "\n...Loading range method: GiantLUTCast" << std::endl;
@@ -457,6 +452,72 @@ int main(int argc, char *argv[]) {
 
 		#else
 		std::cout << "\nNot compiled with CUDA enabled, please enable flag -DWITH_CUDA=ON to run RayMarchingGPU benchmarks." << std::endl;
+		#endif
+	}
+
+	if (utils::has("CDDTCastGPU", methods) || utils::has("cddtgpu", methods)
+		|| utils::has("PCDDTCastGPU", methods) || utils::has("pcddtgpu", methods)) {
+		#if USE_CUDA == 1
+		std::cout << "\n...Loading range method: CDDTCastGPU" << std::endl;
+		auto construction_start = std::chrono::high_resolution_clock::now();
+		CDDTCastGPU cddtgpu = CDDTCastGPU(map, MAX_DISTANCE, THETA_DISC);
+		auto construction_end = std::chrono::high_resolution_clock::now();
+		std::chrono::duration<double> construction_dur = 
+			std::chrono::duration_cast<std::chrono::duration<double>>(construction_end - construction_start);
+		std::cout << "...construction time: " << construction_dur.count() << std::endl;
+
+		if (utils::has("PCDDTCastGPU", methods) || utils::has("pcddtgpu", methods)) {
+			std::cout << "pruning" << std::endl;
+			cddtgpu.prune(MAX_DISTANCE);
+		}
+
+		if (FLAGS_which_benchmark == "grid") {
+			int num_samples = Benchmark<RayMarching>::num_grid_samples(GRID_STEP, GRID_RAYS, GRID_SAMPLES, map.width, map.height);
+			float *samples = new float[num_samples*3];
+			float *outs = new float[num_samples];
+			
+
+			Benchmark<RayMarching>::get_grid_samples(samples, GRID_STEP, GRID_RAYS, GRID_SAMPLES, map.width, map.height);
+			// warmup
+			cddtgpu.calc_range_many(samples, outs, num_samples);
+
+			auto mark_start = std::chrono::high_resolution_clock::now();
+			cddtgpu.calc_range_many(samples, outs, num_samples);
+			auto mark_end = std::chrono::high_resolution_clock::now();
+			std::chrono::duration<double> mark_dur = 
+				std::chrono::duration_cast<std::chrono::duration<double>>(mark_end - mark_start);
+			std::cout << "...benchmark time: " << mark_dur.count() << std::endl;
+			std::cout << ".....avg time per ray cast: " << mark_dur.count() / num_samples << std::endl;
+			std::cout << ".....rays cast: " << num_samples << std::endl;
+
+			// print first few outputs for sanity checking
+			for (int i = 0; i < 10; ++i)
+				std::cout << outs[i] << std::endl;
+		}
+		
+		if (FLAGS_which_benchmark == "random") {
+			float *samples = new float[RANDOM_SAMPLES*3];
+			float *outs = new float[RANDOM_SAMPLES];
+			
+			// warm up
+			Benchmark<RayMarching>::get_random_samples(samples, RANDOM_SAMPLES, map.width, map.height);
+			cddtgpu.calc_range_many(samples, outs, RANDOM_SAMPLES);
+			Benchmark<RayMarching>::get_random_samples(samples, RANDOM_SAMPLES, map.width, map.height);
+			cddtgpu.calc_range_many(samples, outs, RANDOM_SAMPLES);
+			
+			Benchmark<RayMarching>::get_random_samples(samples, RANDOM_SAMPLES, map.width, map.height);
+			auto mark_start = std::chrono::high_resolution_clock::now();
+			cddtgpu.calc_range_many(samples, outs, RANDOM_SAMPLES);
+			auto mark_end = std::chrono::high_resolution_clock::now();
+			std::chrono::duration<double> mark_dur = 
+				std::chrono::duration_cast<std::chrono::duration<double>>(mark_end - mark_start);
+			std::cout << "...benchmark time: " << mark_dur.count() << std::endl;
+			std::cout << ".....avg time per ray cast: " << mark_dur.count() / RANDOM_SAMPLES << std::endl;
+			std::cout << ".....rays cast: " << RANDOM_SAMPLES << std::endl;
+		}
+
+		#else
+		std::cout << "\nNot compiled with CUDA enabled, please enable flag -DWITH_CUDA=ON to run CDDTCastGPU benchmarks." << std::endl;
 		#endif
 	}
 

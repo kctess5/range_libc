@@ -60,3 +60,28 @@ private:
 	bool constants_set = false;
 	#endif
 };
+
+class CDDTCUDA
+{
+public:
+	CDDTCUDA(std::vector<std::vector<bool> > grid, int w, int h, float mr, int theta_disc);
+	~CDDTCUDA();
+	void init_buffers(float *compressed_lut_ptr, unsigned int *compressed_lut_index, unsigned short *lut_slice_widths, unsigned short *lut_bin_widths, int num_lut_els, int max_lut_w, float *lut_translations);
+	void calc_range_many(float *ins, float *outs, int num_casts);
+protected:
+	bool is_initialized;
+	int theta_discretization;
+	int max_lut_width;
+
+	int width;
+	int height;
+	float max_range;
+
+	float *d_compressed_lut_ptr;
+	float **d_compressed_lut_index;
+	unsigned short *d_lut_slice_widths;
+	unsigned short *d_lut_bin_widths;
+
+	float *d_ins;
+	float *d_outs;
+};
