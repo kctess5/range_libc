@@ -31,6 +31,7 @@ Useful Links: https://github.com/MRPT/mrpt/blob/4137046479222f3a71b5c00aee1d5fa8
 #include "vendor/lodepng/lodepng.h"
 #include "vendor/distance_transform.h"
 #include "includes/RangeUtils.h"
+// #include "zlib.h"
 
 #include <stdio.h>      /* printf */
 #include <cstdlib>
@@ -119,6 +120,103 @@ Useful Links: https://github.com/MRPT/mrpt/blob/4137046479222f3a71b5c00aee1d5fa8
 #else
 	#define USE_CUDA 0
 #endif
+
+
+
+
+
+
+
+// /** Compress a STL string using zlib with given compression level and return
+//   * the binary data. */
+// std::string compress_string(const std::string& str,
+//                             int compressionlevel = Z_BEST_COMPRESSION)
+// {
+//     z_stream zs;                        // z_stream is zlib's control structure
+//     memset(&zs, 0, sizeof(zs));
+
+//     if (deflateInit(&zs, compressionlevel) != Z_OK)
+//         throw(std::runtime_error("deflateInit failed while compressing."));
+
+//     zs.next_in = (Bytef*)str.data();
+//     zs.avail_in = str.size();           // set the z_stream's input
+
+//     int ret;
+//     char outbuffer[32768];
+//     std::string outstring;
+
+//     // retrieve the compressed bytes blockwise
+//     do {
+//         zs.next_out = reinterpret_cast<Bytef*>(outbuffer);
+//         zs.avail_out = sizeof(outbuffer);
+
+//         ret = deflate(&zs, Z_FINISH);
+
+//         if (outstring.size() < zs.total_out) {
+//             // append the block to the output string
+//             outstring.append(outbuffer,
+//                              zs.total_out - outstring.size());
+//         }
+//     } while (ret == Z_OK);
+
+//     deflateEnd(&zs);
+
+//     if (ret != Z_STREAM_END) {          // an error occurred that was not EOF
+//         std::ostringstream oss;
+//         oss << "Exception during zlib compression: (" << ret << ") " << zs.msg;
+//         throw(std::runtime_error(oss.str()));
+//     }
+
+//     return outstring;
+// }
+
+// /** Decompress an STL string using zlib and return the original data. */
+// std::string decompress_string(const std::string& str)
+// {
+//     z_stream zs;                        // z_stream is zlib's control structure
+//     memset(&zs, 0, sizeof(zs));
+
+//     if (inflateInit(&zs) != Z_OK)
+//         throw(std::runtime_error("inflateInit failed while decompressing."));
+
+//     zs.next_in = (Bytef*)str.data();
+//     zs.avail_in = str.size();
+
+//     int ret;
+//     char outbuffer[32768];
+//     std::string outstring;
+
+//     // get the decompressed bytes blockwise using repeated calls to inflate
+//     do {
+//         zs.next_out = reinterpret_cast<Bytef*>(outbuffer);
+//         zs.avail_out = sizeof(outbuffer);
+
+//         ret = inflate(&zs, 0);
+
+//         if (outstring.size() < zs.total_out) {
+//             outstring.append(outbuffer,
+//                              zs.total_out - outstring.size());
+//         }
+
+//     } while (ret == Z_OK);
+
+//     inflateEnd(&zs);
+
+//     if (ret != Z_STREAM_END) {          // an error occurred that was not EOF
+//         std::ostringstream oss;
+//         oss << "Exception during zlib decompression: (" << ret << ") "
+//             << zs.msg;
+//         throw(std::runtime_error(oss.str()));
+//     }
+
+//     return outstring;
+// }
+
+
+
+
+
+
 
 namespace ranges {
 	struct OMap
@@ -409,6 +507,32 @@ namespace ranges {
 		int memory() {
 			return width*height*sizeof(float);
 		}
+
+		void serialize(std::stringstream *ss) {
+			(*ss) << width << "," << height << std::endl;
+			(*ss) << width << "," << height << std::endl;
+			// for (int x = 0; x < width; ++x) {
+			// 	for (int y = 0; y < height; ++y) {
+			// 		(*ss) << grid[x][y] << ",";
+			// 	}
+			// }
+		}
+		void deserialize(std::stringstream *ss) {
+			// height and width
+			std::string line;
+			std::getline((*ss), line);
+			std::vector<std::string> wh = utils::split(line, ',');
+			width = std::stoi(wh[0]);
+
+			std::cout << width << std::endl;
+			
+			
+			// while (std::getline((*ss), line))
+			// {
+			// 	std::cout << "TEST" << std::endl;
+			// 	std::cout << line << std::endl;
+			// }
+		}
 	};
 
 	class RangeMethod
@@ -678,6 +802,34 @@ namespace ranges {
 		}
 
 
+		// serialize the data structure to the given string stream
+		virtual void serialize(std::stringstream* ss) {
+			std::cout << "serialize" << std::endl;
+			(*ss) << "test test test" << std::endl;
+		}
+
+		// deserialize data structure from the given string stream
+		virtual void deserialize(std::stringstream* ss) {
+			std::cout << "deserialize" << std::endl;
+		}
+
+		// compress and serialize
+		virtual void compressedSerialize(std::stringstream* ss) {
+			std::cout << "compressedSerialize" << std::endl;
+			// std::stringstream uncompressed;
+			// serialize(&uncompressed);
+			// // std::cout << uncompressed.str() << std::endl;
+			// (*ss) << compress_string(uncompressed.str());
+		}
+
+		// uncompress and deserialize
+		virtual void compressedDeserialize(std::stringstream* ss) {
+			std::cout << "compressedDeserialize" << std::endl;
+			// // std::cout << decompress_string((*ss).str()) << std::endl;
+			// std::stringstream uncompressed;
+			// uncompressed << decompress_string((*ss).str());
+			// deserialize(&uncompressed);
+		}
 
 		#endif
 	
@@ -943,6 +1095,15 @@ namespace ranges {
 	{
 	public:
 		RayMarching(OMap m, float mr) : RangeMethod(m, mr) { distImage = DistanceTransform(&m); }
+
+		void serialize(std::stringstream *ss) {
+			distImage.serialize(ss);
+		}
+		void deserialize(std::stringstream *ss) {
+			distImage.deserialize(ss);
+		}
+
+
 		
 		float ANIL calc_range(float x, float y, float heading) {
 			float x0 = x;

@@ -46,6 +46,9 @@ DEFINE_string(trace_path, "", "Path to output trace map of memory access pattern
 DEFINE_string(lut_slice_path, "", "Path to output a slice of the LUT.");
 DEFINE_string(lut_slice_theta, "1.57", "Which LUT slice to output");
 
+DEFINE_string(serialize_path, "", "Path to output a serialized data structure.");
+
+
 #define MAX_DISTANCE 500
 #define THETA_DISC 108
 #define MB (1024.0*1024.0)
@@ -107,6 +110,9 @@ int main(int argc, char *argv[]) {
 	// DistanceTransform dt = DistanceTransform(&map);
 	// dt.save("./test.png");
 
+	bool DO_SERIALIZE = (FLAGS_serialize_path != "");
+
+
 	bool DO_LOG = (FLAGS_log_path != "");
 	std::stringstream tlog;
 	std::stringstream summary; 
@@ -126,6 +132,10 @@ int main(int argc, char *argv[]) {
 		query_y = std::stof(query[1]);
 		query_t = std::stof(query[2]);
 	}
+
+	std::vector<std::string> map_path_parts = utils::split(FLAGS_map_path, '/');
+	std::string map_name = map_path_parts[map_path_parts.size()-1];
+	std::cout << "MAP NAME: " << map_name << std::endl;
 	
 
 	std::vector<std::string> methods = utils::split(FLAGS_method, ',');
@@ -189,6 +199,21 @@ int main(int argc, char *argv[]) {
 		std::cout << "...construction time: " << construction_dur.count() << std::endl;
 		std::cout << "...memory usage (MB): " << rm.memory() / MB << std::endl;
 		std::cout << "...Running grid benchmark" << std::endl;
+
+
+		if (DO_SERIALIZE) {
+			std::stringstream serialized;
+			
+			// rm.compressedSerialize(&serialized);
+			// rm.compressedDeserialize(&serialized);
+
+			rm.serialize(&serialized);
+			rm.deserialize(&serialized);
+
+			// /basement_fixed.map.rm.tar.gx
+			save_log(serialized, FLAGS_serialize_path + map_name + ".rm.serialized");
+		}
+
 		if (DO_LOG) {
 			tlog.str("");
 			mark.set_log(&tlog);

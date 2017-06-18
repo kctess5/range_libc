@@ -39,6 +39,20 @@ else()
         message(STATUS "The compiler ${CMAKE_CXX_COMPILER} has no C++11 support. Please use a different C++ compiler.")
 endif()
 
+
+set(ZLIB_ROOT ${BASEPATH}/vendor/zlib)
+
+# find_package( ZLIB REQUIRED )
+# find_package( LZ4 REQUIRED )
+# if ( ZLIB_FOUND )
+#     include_directories( ${ZLIB_INCLUDE_DIRS} )
+#     target_link_libraries( YourProject ${ZLIB_LIBRARIES} )
+# endif( ZLIB_FOUND )
+
+# include_directories( ${LZ4_INCLUDE_DIRS} )
+
+
+
 # set(CMAKE_CXX_FLAGS "-march=native -fverbose-asm -ffast-math -fno-math-errno -g -save-temps ${CMAKE_CXX_FLAGS}")
 # set(CMAKE_CXX_FLAGS "-march=native -ffast-math -fno-math-errno -g -rdynamic -save-temps ${CMAKE_CXX_FLAGS}")
 set(CMAKE_CXX_FLAGS "-march=native -ffast-math -fno-math-errno ${CMAKE_CXX_FLAGS} -O3")
