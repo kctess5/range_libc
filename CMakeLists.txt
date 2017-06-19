@@ -8,6 +8,7 @@ file(GLOB SRCS
 	"vendor/lodepng/lodepng.cpp" )
 
 option(WITH_CUDA "Compile CUDA ray cast varients" ON)
+option(WITH_PROTOBUF "Compile with serialization" ON)
 # set(CHUNK_SIZE 16384)
 # set(CHUNK_THREADS 256)
 set(CHUNK_SIZE 262144)
@@ -39,19 +40,46 @@ else()
         message(STATUS "The compiler ${CMAKE_CXX_COMPILER} has no C++11 support. Please use a different C++ compiler.")
 endif()
 
+if (WITH_PROTOBUF)
+	message("PROTOBUF")
 
-set(ZLIB_ROOT ${BASEPATH}/vendor/zlib)
+	# find_package(CapnProto CONFIG REQUIRED)
 
-# find_package( ZLIB REQUIRED )
-# find_package( LZ4 REQUIRED )
-# if ( ZLIB_FOUND )
-#     include_directories( ${ZLIB_INCLUDE_DIRS} )
-#     target_link_libraries( YourProject ${ZLIB_LIBRARIES} )
-# endif( ZLIB_FOUND )
+	# include_directories(${BASEPATH}/protos)
 
-# include_directories( ${LZ4_INCLUDE_DIRS} )
+	include_directories(${BASEPATH}/vendor/cereal-1.2.2/include)
+	include_directories(${BASEPATH}/vendor/flatbuffers/include)
+	include_directories(${BASEPATH}/protos)
 
 
+	# find_package(CapnProto REQUIRED)
+	# file(GLOB ProtoFiles ${BASEPATH}/protobufs/*.proto)
+	# PROTOBUF_GENERATE_CPP(ProtoSources ProtoHeaders ${ProtoFiles})
+
+	# message(${PROTOBUF_INCLUDE_DIRS})
+
+	
+
+	# # add_library(messages STATIC ${ProtoSources} ${ProtoHeaders})
+	# # target_link_libraries(messages ${Boost_LIBRARIES} ${PROTOBUF_LIBRARY})
+
+
+	# # ${PROTOBUF_LIBRARIES} 
+	# include_directories(${PROTOBUF_INCLUDE_DIRS})
+
+	
+	# include_directories(${BASEPATH}/protobufs/build)
+	# link_directories(${BASEPATH}/protobufs/build)
+	# file(GLOB SERIALIZE_SRCS 
+	# 	${BASEPATH}/protobufs/build/*.cc)
+	add_definitions(-DUSE_SERIALIZE=1)
+
+
+	# set(SERIALIZE_SRCS "")
+else()
+	set(SERIALIZE_SRCS "")
+	add_definitions(-DUSE_SERIALIZE=0)
+endif()
 
 # set(CMAKE_CXX_FLAGS "-march=native -fverbose-asm -ffast-math -fno-math-errno -g -save-temps ${CMAKE_CXX_FLAGS}")
 # set(CMAKE_CXX_FLAGS "-march=native -ffast-math -fno-math-errno -g -rdynamic -save-temps ${CMAKE_CXX_FLAGS}")
@@ -76,13 +104,17 @@ if (WITH_CUDA)
 	# set(CUDA_TOOLKIT_ROOT_DIR "/usr/local/cuda-7.5")
 	find_package(CUDA REQUIRED)
 
-	cuda_add_executable(range_lib ${CUDA_SRCS})
+	cuda_add_executable(range_lib ${CUDA_SRCS} ${SERIALIZE_SRCS})
 	# message(${CUDA_VERSION})
 
 else()
 	add_definitions(-DUSE_CUDA=0)
-	add_executable(range_lib ${SRCS})
+	add_executable(range_lib ${SRCS} ${SERIALIZE_SRCS})
 endif()
 
-
 target_link_libraries(range_lib gflags pthread)
+
+# if (WITH_PROTOBUF)
+# 	message(${PROTOBUF_LIBRARIES})
+# 	target_link_libraries(range_lib ${PROTOBUF_LIBRARIES})
+# endif()

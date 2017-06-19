@@ -202,16 +202,21 @@ int main(int argc, char *argv[]) {
 
 
 		if (DO_SERIALIZE) {
-			std::stringstream serialized;
+			rm.serialize(FLAGS_serialize_path + map_name + ".rm.serialized");
+
+
+			rm.deserialize(FLAGS_serialize_path + map_name + ".rm.serialized");
+
+			// std::stringstream serialized;
 			
-			// rm.compressedSerialize(&serialized);
-			// rm.compressedDeserialize(&serialized);
+			// // rm.compressedSerialize(&serialized);
+			// // rm.compressedDeserialize(&serialized);
 
-			rm.serialize(&serialized);
-			rm.deserialize(&serialized);
+			// rm.serialize(&serialized);
+			// rm.deserialize(&serialized);
 
-			// /basement_fixed.map.rm.tar.gx
-			save_log(serialized, FLAGS_serialize_path + map_name + ".rm.serialized");
+			// // /basement_fixed.map.rm.tar.gx
+			// save_log(serialized, FLAGS_serialize_path + map_name + ".rm.serialized");
 		}
 
 		if (DO_LOG) {

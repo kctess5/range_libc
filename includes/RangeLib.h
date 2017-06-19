@@ -31,7 +31,18 @@ Useful Links: https://github.com/MRPT/mrpt/blob/4137046479222f3a71b5c00aee1d5fa8
 #include "vendor/lodepng/lodepng.h"
 #include "vendor/distance_transform.h"
 #include "includes/RangeUtils.h"
-// #include "zlib.h"
+
+#ifndef USE_SERIALIZE 
+	#define USE_SERIALIZE 0
+#endif
+
+#if USE_SERIALIZE == 1
+// serialization stuff
+#include <cereal/archives/binary.hpp>
+#include <cereal/details/helpers.hpp>
+#include <fstream>
+#else
+#endif
 
 #include <stdio.h>      /* printf */
 #include <cstdlib>
@@ -121,103 +132,6 @@ Useful Links: https://github.com/MRPT/mrpt/blob/4137046479222f3a71b5c00aee1d5fa8
 	#define USE_CUDA 0
 #endif
 
-
-
-
-
-
-
-// /** Compress a STL string using zlib with given compression level and return
-//   * the binary data. */
-// std::string compress_string(const std::string& str,
-//                             int compressionlevel = Z_BEST_COMPRESSION)
-// {
-//     z_stream zs;                        // z_stream is zlib's control structure
-//     memset(&zs, 0, sizeof(zs));
-
-//     if (deflateInit(&zs, compressionlevel) != Z_OK)
-//         throw(std::runtime_error("deflateInit failed while compressing."));
-
-//     zs.next_in = (Bytef*)str.data();
-//     zs.avail_in = str.size();           // set the z_stream's input
-
-//     int ret;
-//     char outbuffer[32768];
-//     std::string outstring;
-
-//     // retrieve the compressed bytes blockwise
-//     do {
-//         zs.next_out = reinterpret_cast<Bytef*>(outbuffer);
-//         zs.avail_out = sizeof(outbuffer);
-
-//         ret = deflate(&zs, Z_FINISH);
-
-//         if (outstring.size() < zs.total_out) {
-//             // append the block to the output string
-//             outstring.append(outbuffer,
-//                              zs.total_out - outstring.size());
-//         }
-//     } while (ret == Z_OK);
-
-//     deflateEnd(&zs);
-
-//     if (ret != Z_STREAM_END) {          // an error occurred that was not EOF
-//         std::ostringstream oss;
-//         oss << "Exception during zlib compression: (" << ret << ") " << zs.msg;
-//         throw(std::runtime_error(oss.str()));
-//     }
-
-//     return outstring;
-// }
-
-// /** Decompress an STL string using zlib and return the original data. */
-// std::string decompress_string(const std::string& str)
-// {
-//     z_stream zs;                        // z_stream is zlib's control structure
-//     memset(&zs, 0, sizeof(zs));
-
-//     if (inflateInit(&zs) != Z_OK)
-//         throw(std::runtime_error("inflateInit failed while decompressing."));
-
-//     zs.next_in = (Bytef*)str.data();
-//     zs.avail_in = str.size();
-
-//     int ret;
-//     char outbuffer[32768];
-//     std::string outstring;
-
-//     // get the decompressed bytes blockwise using repeated calls to inflate
-//     do {
-//         zs.next_out = reinterpret_cast<Bytef*>(outbuffer);
-//         zs.avail_out = sizeof(outbuffer);
-
-//         ret = inflate(&zs, 0);
-
-//         if (outstring.size() < zs.total_out) {
-//             outstring.append(outbuffer,
-//                              zs.total_out - outstring.size());
-//         }
-
-//     } while (ret == Z_OK);
-
-//     inflateEnd(&zs);
-
-//     if (ret != Z_STREAM_END) {          // an error occurred that was not EOF
-//         std::ostringstream oss;
-//         oss << "Exception during zlib decompression: (" << ret << ") "
-//             << zs.msg;
-//         throw(std::runtime_error(oss.str()));
-//     }
-
-//     return outstring;
-// }
-
-
-
-
-
-
-
 namespace ranges {
 	struct OMap
 	{
@@ -240,6 +154,8 @@ namespace ranges {
 		float world_sin_angle;
 		float world_cos_angle;
 		#endif
+
+		OMap() : width(0), height(0), fn(""), has_error(false){}
 
 		OMap(int w, int h) : width(w), height(h), fn(""), has_error(false) {
 			for (int i = 0; i < w; ++i) {
@@ -419,6 +335,52 @@ namespace ranges {
 		int memory() {
 			return sizeof(bool) * width * height;
 		}
+
+		template<class Archive>
+		void serialize(Archive & archive)
+		{
+			bool *g = (bool *)malloc(width*height*sizeof(bool));
+			int i = 0;
+			for (int x = 0; x < width; ++x) {
+				for (int y = 0; y < height; ++y) {
+					g[i] = grid[x][y];
+					i++;
+				}
+			}
+			archive( width, height ); // serialize things by passing them to the archive
+			archive(cereal::binary_data( g, width*height*sizeof(bool) ));
+		}
+
+		template<class Archive>
+		void deserialize(Archive & archive)
+		{
+			archive( width, height ); // serialize things by passing them to the archive
+			bool *g = (bool *)malloc(width*height*sizeof(bool));
+			archive(cereal::binary_data( g, width*height*sizeof(bool) ));
+
+			grid.clear();
+			for (int i = 0; i < width; ++i) {
+				std::vector<bool> y_axis;
+				for (int q = 0; q < height; ++q) y_axis.push_back(false);
+				grid.push_back(y_axis);
+			}
+			#if _MAKE_TRACE_MAP == 1
+			trace_grid.clear();
+			for (int i = 0; i < width; ++i) {
+				std::vector<bool> y_axis;
+				for (int q = 0; q < height; ++q) y_axis.push_back(false);
+				trace_grid.push_back(y_axis);
+			}
+			#endif
+
+			int i = 0;
+			for (int x = 0; x < width; ++x) {
+				for (int y = 0; y < height; ++y) {
+					grid[x][y] = g[i];
+					i++;
+				}
+			}
+		}
 	};
 
 	struct DistanceTransform
@@ -508,30 +470,41 @@ namespace ranges {
 			return width*height*sizeof(float);
 		}
 
-		void serialize(std::stringstream *ss) {
-			(*ss) << width << "," << height << std::endl;
-			(*ss) << width << "," << height << std::endl;
-			// for (int x = 0; x < width; ++x) {
-			// 	for (int y = 0; y < height; ++y) {
-			// 		(*ss) << grid[x][y] << ",";
-			// 	}
-			// }
+		template<class Archive>
+		void serialize(Archive & archive)
+		{
+			float *g = (float *)malloc(width*height*sizeof(float));
+			int i = 0;
+			for (int x = 0; x < width; ++x) {
+				for (int y = 0; y < height; ++y) {
+					g[i] = grid[x][y];
+					i++;
+				}
+			}
+			archive( width, height ); // serialize things by passing them to the archive
+			archive(cereal::binary_data( g, width*height*sizeof(float) ));
 		}
-		void deserialize(std::stringstream *ss) {
-			// height and width
-			std::string line;
-			std::getline((*ss), line);
-			std::vector<std::string> wh = utils::split(line, ',');
-			width = std::stoi(wh[0]);
 
-			std::cout << width << std::endl;
-			
-			
-			// while (std::getline((*ss), line))
-			// {
-			// 	std::cout << "TEST" << std::endl;
-			// 	std::cout << line << std::endl;
-			// }
+		template<class Archive>
+		void deserialize(Archive & archive)
+		{
+			archive( width, height ); // serialize things by passing them to the archive
+			float *g = (float *)malloc(width*height*sizeof(float));
+			archive(cereal::binary_data( g, width*height*sizeof(float) ));
+
+			grid.clear();
+			for (int i = 0; i < width; ++i) {
+				std::vector<float> y_axis;
+				for (int q = 0; q < height; ++q) y_axis.push_back(false);
+				grid.push_back(y_axis);
+			}
+			int i = 0;
+			for (int x = 0; x < width; ++x) {
+				for (int y = 0; y < height; ++y) {
+					grid[x][y] = g[i];
+					i++;
+				}
+			}
 		}
 	};
 
@@ -803,13 +776,13 @@ namespace ranges {
 
 
 		// serialize the data structure to the given string stream
-		virtual void serialize(std::stringstream* ss) {
+		virtual void serialize(std::string fn) {
 			std::cout << "serialize" << std::endl;
-			(*ss) << "test test test" << std::endl;
+			// (*ss) << "test test test" << std::endl;
 		}
 
 		// deserialize data structure from the given string stream
-		virtual void deserialize(std::stringstream* ss) {
+		virtual void deserialize(std::string fn) {
 			std::cout << "deserialize" << std::endl;
 		}
 
@@ -1096,15 +1069,68 @@ namespace ranges {
 	public:
 		RayMarching(OMap m, float mr) : RangeMethod(m, mr) { distImage = DistanceTransform(&m); }
 
-		void serialize(std::stringstream *ss) {
-			distImage.serialize(ss);
+		void serialize(std::string fn) {
+			std::cout << "TEST: " << fn << std::endl;
+			std::ofstream myFile;
+			myFile.open (fn, std::ios::out | std::ios::binary);
+			// std::ofstream os(fn, std::ios::binary);
+			cereal::BinaryOutputArchive archive( myFile );
+			map.serialize(archive);
+			distImage.serialize(archive);
+			myFile.close();
 		}
-		void deserialize(std::stringstream *ss) {
-			distImage.deserialize(ss);
-		}
+		void deserialize(std::string fn) {
+			std::cout << "ADSFLKJGS" << std::endl;
+			std::ifstream myFile;
+			myFile.open (fn, std::ios::in | std::ios::binary);
+			// std::ofstream os(fn, std::ios::binary);
+			cereal::BinaryInputArchive archive( myFile );
+			map.deserialize(archive);
+			distImage.deserialize(archive);
+			myFile.close();
+
+			map.save("deserialized.png");
+			distImage.save("deserializedDt.png");
+
+			// FILE* pFile;
+			// pFile = fopen("file.binary", "rb");
+			// long size = ftell(pFile);
+
+			
 
 
-		
+
+			// // Reading size of file
+			// FILE * file = fopen("file.binary", "rb");
+			// if (file == NULL) return;
+			// fseek(file, 0, SEEK_END);
+			// long int size = ftell(file);
+			// fclose(file);
+
+			// std::cout << "deser size: " << size << std::endl;
+			// // Reading data to array of unsigned chars
+			// file = fopen("file.binary", "rb");
+			// void * in = (void *) malloc(size);
+			// int bytes_read = fread(in, 1, size, file);
+			// fclose(file);
+
+			// OMap testMap;
+			// void * next;
+			// testMap.deserialize(in, next);
+			// testMap.save("deserialized.png");
+
+			// // std::cout << in << "  " << next << std::endl;
+			// // return;
+
+			// char * blah = (char *) in;
+
+			// DistanceTransform testDt;
+			// testDt.deserialize(&blah[1690056], next);
+			// testDt.save("deserializedDt.png");
+
+			// free(in);
+		}
+
 		float ANIL calc_range(float x, float y, float heading) {
 			float x0 = x;
 			float y0 = y;
