@@ -84,6 +84,55 @@ namespace utils {
 		key_T t_mask;
 	};
 
+	enum Method {
+		BL,
+		RM,
+		RMGPU,
+		CDDT,
+		PCDDT,
+		CDDT2,
+		PCDDT2,
+		CDDTGPU,
+		PCDDTGPU,
+		GLT,
+		UNKNOWN
+	};
+
+	Method which_method(std::string method) {
+		if (method == "BresenhamsLine" || method == "bl") return BL;
+		if (method == "RayMarching"    || method == "rm") return RM;
+		if (method == "RayMarchingGPU" || method == "rmgpu") return RMGPU;
+		if (method == "CDDTCast"       || method == "cddt") return CDDT;
+		if (method == "PrunedCDDTCast" || method == "pcddt") return PCDDT;
+		if (method == "CDDTCast2"      || method == "cddt2") return CDDT2;
+		if (method == "PrunedCDDTCast2" || method == "pcddt2") return PCDDT2;
+		if (method == "CDDTCastGPU"    || method == "cddtgpu") return CDDTGPU;
+		if (method == "PCDDTCastGPU"   || method == "pcddtgpu") return PCDDTGPU;
+		if (method == "GiantLUTCast"   || method == "glt") return GLT;
+		return UNKNOWN;
+	}
+
+	std::string abbrev(Method meth) {
+		switch(meth)
+		{
+			case BL : return "bl";
+			case RM : return "rm";
+			case RMGPU : return "rmgpu";
+			case CDDT : return "cddt";
+			case PCDDT : return "pcddt";
+			case CDDT2 : return "cddt2";
+			case PCDDT2 : return "pcddt2";
+			case CDDTGPU : return "cddtgpu";
+			case PCDDTGPU : return "pcddtgpu";
+			case GLT : return "glt";
+			default : return "unknown";
+		}
+	}
+
+	bool has(Method method, std::vector<Method> methods) {
+		return std::find(methods.begin(), methods.end(),method)!=methods.end();
+	}
+
 	bool has(std::string substring, std::string str) {
 		return str.find(substring) != std::string::npos;
 	}

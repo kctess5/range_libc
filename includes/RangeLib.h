@@ -511,6 +511,7 @@ namespace ranges {
 	class RangeMethod
 	{
 	public:
+		RangeMethod() : map(), max_range(0) {};
 		RangeMethod(OMap m, float mr) : map(m), max_range(mr) {};
 		virtual ~RangeMethod() {};
 
@@ -786,22 +787,18 @@ namespace ranges {
 			std::cout << "deserialize" << std::endl;
 		}
 
-		// compress and serialize
-		virtual void compressedSerialize(std::stringstream* ss) {
-			std::cout << "compressedSerialize" << std::endl;
-			// std::stringstream uncompressed;
-			// serialize(&uncompressed);
-			// // std::cout << uncompressed.str() << std::endl;
-			// (*ss) << compress_string(uncompressed.str());
+		template<class Archive>
+		void serialize(Archive & archive)
+		{
+			archive(max_range);
+			map.serialize(archive);
 		}
 
-		// uncompress and deserialize
-		virtual void compressedDeserialize(std::stringstream* ss) {
-			std::cout << "compressedDeserialize" << std::endl;
-			// // std::cout << decompress_string((*ss).str()) << std::endl;
-			// std::stringstream uncompressed;
-			// uncompressed << decompress_string((*ss).str());
-			// deserialize(&uncompressed);
+		template<class Archive>
+		void deserialize(Archive & archive)
+		{
+			archive(max_range);
+			map.deserialize(archive);
 		}
 
 		#endif
@@ -1067,68 +1064,28 @@ namespace ranges {
 	class RayMarching : public RangeMethod
 	{
 	public:
+		RayMarching() : RangeMethod() {};
 		RayMarching(OMap m, float mr) : RangeMethod(m, mr) { distImage = DistanceTransform(&m); }
 
 		void serialize(std::string fn) {
-			std::cout << "TEST: " << fn << std::endl;
 			std::ofstream myFile;
 			myFile.open (fn, std::ios::out | std::ios::binary);
-			// std::ofstream os(fn, std::ios::binary);
 			cereal::BinaryOutputArchive archive( myFile );
-			map.serialize(archive);
+
+			RangeMethod::serialize(archive);
+			// map.serialize(archive);
 			distImage.serialize(archive);
 			myFile.close();
 		}
 		void deserialize(std::string fn) {
-			std::cout << "ADSFLKJGS" << std::endl;
 			std::ifstream myFile;
 			myFile.open (fn, std::ios::in | std::ios::binary);
-			// std::ofstream os(fn, std::ios::binary);
 			cereal::BinaryInputArchive archive( myFile );
-			map.deserialize(archive);
+
+			RangeMethod::deserialize(archive);
+			// map.deserialize(archive);
 			distImage.deserialize(archive);
 			myFile.close();
-
-			map.save("deserialized.png");
-			distImage.save("deserializedDt.png");
-
-			// FILE* pFile;
-			// pFile = fopen("file.binary", "rb");
-			// long size = ftell(pFile);
-
-			
-
-
-
-			// // Reading size of file
-			// FILE * file = fopen("file.binary", "rb");
-			// if (file == NULL) return;
-			// fseek(file, 0, SEEK_END);
-			// long int size = ftell(file);
-			// fclose(file);
-
-			// std::cout << "deser size: " << size << std::endl;
-			// // Reading data to array of unsigned chars
-			// file = fopen("file.binary", "rb");
-			// void * in = (void *) malloc(size);
-			// int bytes_read = fread(in, 1, size, file);
-			// fclose(file);
-
-			// OMap testMap;
-			// void * next;
-			// testMap.deserialize(in, next);
-			// testMap.save("deserialized.png");
-
-			// // std::cout << in << "  " << next << std::endl;
-			// // return;
-
-			// char * blah = (char *) in;
-
-			// DistanceTransform testDt;
-			// testDt.deserialize(&blah[1690056], next);
-			// testDt.save("deserializedDt.png");
-
-			// free(in);
 		}
 
 		float ANIL calc_range(float x, float y, float heading) {

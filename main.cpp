@@ -81,6 +81,7 @@ void save_log(std::stringstream &log, std::string path) {
 	save_log(log,path.c_str());
 }
 
+
 int main(int argc, char *argv[]) {
 	// set usage message
 	std::string usage("This library provides fast 2D ray casting on occupancy grid maps.  Sample usage:\n\n");
@@ -89,9 +90,19 @@ int main(int argc, char *argv[]) {
 	google::SetUsageMessage(usage);
 	gflags::ParseCommandLineFlags(&argc, &argv, true);
 
+	std::vector<std::string> map_path_parts = utils::split(FLAGS_map_path, '/');
+	std::string map_name = map_path_parts[map_path_parts.size()-1];
+	std::cout << "MAP NAME: " << map_name << std::endl;
+	std::vector<std::string> map_name_parts = utils::split(map_name, '.');
+	bool SERIALIZED_INPUT = (map_name_parts[map_name_parts.size()-1] == "serialized");
+	if (SERIALIZED_INPUT) std::cout << "SERIALIZED_INPUT" << std::endl;
+
 	std::cout << "Running RangeLib benchmarks" << std::endl;
 	OMap map = OMap(1,1);
-	if (FLAGS_map_path == "BASEMENT_MAP") {
+
+	if (SERIALIZED_INPUT) {
+		std::cout << "SERIALIZED" << std::endl;
+	} else if (FLAGS_map_path == "BASEMENT_MAP") {
 		#ifdef BASEPATH
 		std::cout << "...Loading map" << std::endl;
 		map = OMap(QUOTE(BASEPATH) "/maps/basement_hallways_5cm.png");
@@ -106,13 +117,7 @@ int main(int argc, char *argv[]) {
 		map = OMap(FLAGS_map_path);
 	}
 
-
-	// DistanceTransform dt = DistanceTransform(&map);
-	// dt.save("./test.png");
-
-	bool DO_SERIALIZE = (FLAGS_serialize_path != "");
-
-
+	bool DO_SERIALIZE = (FLAGS_serialize_path != "" && !SERIALIZED_INPUT);
 	bool DO_LOG = (FLAGS_log_path != "");
 	std::stringstream tlog;
 	std::stringstream summary; 
@@ -133,20 +138,18 @@ int main(int argc, char *argv[]) {
 		query_t = std::stof(query[2]);
 	}
 
-	std::vector<std::string> map_path_parts = utils::split(FLAGS_map_path, '/');
-	std::string map_name = map_path_parts[map_path_parts.size()-1];
-	std::cout << "MAP NAME: " << map_name << std::endl;
-	
-
-	std::vector<std::string> methods = utils::split(FLAGS_method, ',');
-
-
+	std::vector<std::string> method_strs = utils::split(FLAGS_method, ',');
+	std::vector<utils::Method> methods;
 	std::cout << "methods: ";
-	for (int i = 0; i < methods.size(); ++i)
-		std::cout << methods[i];
+	for (int i = 0; i < method_strs.size(); ++i) {
+		methods.push_back(utils::which_method(method_strs[i]));
+		std::cout << utils::abbrev(methods[i]);
+		if (i != method_strs.size()-1) std::cout <<  ", ";
+	}
+		
 	std::cout << std::endl;
 
-	if (utils::has("BresenhamsLine", methods) || utils::has("bl", methods)) {
+	if (utils::has(utils::BL, methods)) {
 		std::cout << "\n...Loading range method: BresenhamsLine" << std::endl;
 		auto construction_start = std::chrono::high_resolution_clock::now();
 		BresenhamsLine bl = BresenhamsLine(map, MAX_DISTANCE);
@@ -188,10 +191,17 @@ int main(int argc, char *argv[]) {
 		}
 	}
 
-	if (utils::has("RayMarching", methods) || utils::has("rm", methods)) {
+	if (utils::has(utils::RM, methods)) {
 		std::cout << "\n...Loading range method: RayMarching" << std::endl;
 		auto construction_start = std::chrono::high_resolution_clock::now();
-		RayMarching rm = RayMarching(map, MAX_DISTANCE);
+
+		RayMarching rm = RayMarching();
+		if (SERIALIZED_INPUT) {
+			rm.deserialize(FLAGS_map_path);
+		} else {
+			rm = RayMarching(map, MAX_DISTANCE);
+		}
+
 		auto construction_end = std::chrono::high_resolution_clock::now();
 		std::chrono::duration<double> construction_dur = 
 			std::chrono::duration_cast<std::chrono::duration<double>>(construction_end - construction_start);
@@ -203,20 +213,7 @@ int main(int argc, char *argv[]) {
 
 		if (DO_SERIALIZE) {
 			rm.serialize(FLAGS_serialize_path + map_name + ".rm.serialized");
-
-
 			rm.deserialize(FLAGS_serialize_path + map_name + ".rm.serialized");
-
-			// std::stringstream serialized;
-			
-			// // rm.compressedSerialize(&serialized);
-			// // rm.compressedDeserialize(&serialized);
-
-			// rm.serialize(&serialized);
-			// rm.deserialize(&serialized);
-
-			// // /basement_fixed.map.rm.tar.gx
-			// save_log(serialized, FLAGS_serialize_path + map_name + ".rm.serialized");
 		}
 
 		if (DO_LOG) {
@@ -250,8 +247,7 @@ int main(int argc, char *argv[]) {
 		}
 	}
 
-	if (utils::has("CDDTCast", methods) || utils::has("cddt", methods)
-		|| utils::has("PrunedCDDTCast", methods) || utils::has("pcddt", methods)) {
+	if (utils::has(utils::CDDT, methods) || utils::has(utils::PCDDT, methods)) {
 		auto construction_start = std::chrono::high_resolution_clock::now();
 		CDDTCast rc = CDDTCast(map, MAX_DISTANCE, THETA_DISC);
 		auto construction_end = std::chrono::high_resolution_clock::now();
@@ -259,7 +255,7 @@ int main(int argc, char *argv[]) {
 			std::chrono::duration_cast<std::chrono::duration<double>>(construction_end - construction_start);
 
 		double const_dur = 0;
-		if (utils::has("CDDTCast", methods) || utils::has("cddt", methods)) {
+		if (utils::has(utils::CDDT, methods)) {
 			std::cout << "\n...Loading range method: CDDTCast" << std::endl;
 			std::cout << "...construction time: " << construction_dur.count() << std::endl;
 			std::cout << "...lut size (MB): " << rc.memory() / MB << std::endl;
@@ -279,7 +275,7 @@ int main(int argc, char *argv[]) {
 			}
 		}
 
-		if (utils::has("PrunedCDDTCast", methods) || utils::has("pcddt", methods)) {
+		if (utils::has(utils::PCDDT, methods)) {
 			std::cout << "\n...Loading range method: PrunedCDDTCast" << std::endl;
 			
 
@@ -315,8 +311,7 @@ int main(int argc, char *argv[]) {
 		}
 	}
 
-	if (utils::has("CDDTCast2", methods) || utils::has("cddt2", methods)
-		|| utils::has("PrunedCDDTCast2", methods) || utils::has("pcddt2", methods)) {
+	if (utils::has(utils::CDDT2, methods) || utils::has(utils::PCDDT2, methods)) {
 		auto construction_start = std::chrono::high_resolution_clock::now();
 		CDDTCast2 rc = CDDTCast2(map, MAX_DISTANCE, THETA_DISC);
 		auto construction_end = std::chrono::high_resolution_clock::now();
@@ -324,7 +319,7 @@ int main(int argc, char *argv[]) {
 			std::chrono::duration_cast<std::chrono::duration<double>>(construction_end - construction_start);
 
 		double const_dur = 0;
-		if (utils::has("CDDTCast2", methods) || utils::has("cddt2", methods)) {
+		if (utils::has(utils::CDDT2, methods)) {
 			std::cout << "\n...Loading range method: CDDTCast2" << std::endl;
 			std::cout << "...construction time: " << construction_dur.count() << std::endl;
 			std::cout << "...lut size (MB): " << rc.memory() / MB << std::endl;
@@ -345,7 +340,7 @@ int main(int argc, char *argv[]) {
 			}
 		}
 
-		if (utils::has("PrunedCDDTCast2", methods) || utils::has("pcddt", methods)) {
+		if (utils::has(utils::PCDDT2, methods)) {
 			std::cout << "\n...Loading range method: PrunedCDDTCast2" << std::endl;
 			
 
@@ -381,7 +376,7 @@ int main(int argc, char *argv[]) {
 		// }
 	}
 
-	if (utils::has("GiantLUTCast", methods) || utils::has("glt", methods)) {
+	if (utils::has(utils::GLT, methods)) {
 		std::cout << "\n...Loading range method: GiantLUTCast" << std::endl;
 		
 
@@ -416,7 +411,7 @@ int main(int argc, char *argv[]) {
 		}
 	}
 
-	if (utils::has("RayMarchingGPU", methods) || utils::has("rmgpu", methods)) {
+	if (utils::has(utils::RMGPU, methods)) {
 		#if USE_CUDA == 1
 		std::cout << "\n...Loading range method: RayMarchingGPU" << std::endl;
 		auto construction_start = std::chrono::high_resolution_clock::now();
@@ -485,8 +480,7 @@ int main(int argc, char *argv[]) {
 		#endif
 	}
 
-	if (utils::has("CDDTCastGPU", methods) || utils::has("cddtgpu", methods)
-		|| utils::has("PCDDTCastGPU", methods) || utils::has("pcddtgpu", methods)) {
+	if (utils::has(utils::CDDTGPU, methods) || utils::has(utils::PCDDTGPU, methods)) {
 		#if USE_CUDA == 1
 		std::cout << "\n...Loading range method: CDDTCastGPU" << std::endl;
 		auto construction_start = std::chrono::high_resolution_clock::now();
@@ -496,7 +490,7 @@ int main(int argc, char *argv[]) {
 			std::chrono::duration_cast<std::chrono::duration<double>>(construction_end - construction_start);
 		std::cout << "...construction time: " << construction_dur.count() << std::endl;
 
-		if (utils::has("PCDDTCastGPU", methods) || utils::has("pcddtgpu", methods)) {
+		if (utils::has(utils::PCDDTGPU, methods)) {
 			std::cout << "pruning" << std::endl;
 			cddtgpu.prune(MAX_DISTANCE);
 		}
