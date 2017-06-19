@@ -1,9 +1,0 @@
-syntax = "proto2";
-
-package rangelibc;
-
-message OMap {
-  required uint64 width = 1;
-  required uint64 height = 2;
-  repeated bool grid = 3 [packed=true];
-}
