@@ -8,6 +8,13 @@
 #define M_PI 3.141592653589793238462643383279502
 #endif
 
+// class CUDARayCastMethod
+// {
+// public:
+// 	CUDARayCastMethod(arguments);
+// 	~CUDARayCastMethod();
+// };
+
 class RayMarchingCUDA
 {
 public:
@@ -16,7 +23,6 @@ public:
 	void calc_range_many(float *ins, float *outs, int num_casts);
 	void numpy_calc_range(float *ins, float *outs, int num_casts);
 	void numpy_calc_range_angles(float * ins, float * angles, float * outs, int num_particles, int num_angles);
-	void calc_range_repeat_angles_eval_sensor_model(float * ins, float * angles, float * obs, double * weights, int num_particles, int num_angles);
 
 	void set_sensor_table(double *sensor_table, int table_width);
 

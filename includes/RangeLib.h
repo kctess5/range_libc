@@ -40,6 +40,7 @@ Useful Links: https://github.com/MRPT/mrpt/blob/4137046479222f3a71b5c00aee1d5fa8
 // serialization stuff
 #include <cereal/archives/binary.hpp>
 #include <cereal/details/helpers.hpp>
+#include <cereal/types/vector.hpp>
 #include <fstream>
 #else
 #endif
@@ -82,7 +83,6 @@ Useful Links: https://github.com/MRPT/mrpt/blob/4137046479222f3a71b5c00aee1d5fa8
 #define _USE_CACHED_CONSTANTS 1
 #define _USE_FAST_ROUND 0
 #define _NO_INLINE 0
-#define _USE_LRU_CACHE 0
 #define _LRU_CACHE_SIZE 1000000
 
 // not implemented yet -> use 16 bit integers to store zero points
@@ -99,10 +99,12 @@ Useful Links: https://github.com/MRPT/mrpt/blob/4137046479222f3a71b5c00aee1d5fa8
 // #define _USE_FAST_ROUND 1
 // #define _DO_MOD 0 // this might not be necessary (aka 1 & 0 might be equivalent), will evaluate later
 // #define _NO_INLINE 0
-// 
-#if _USE_LRU_CACHE
-#include "includes/lru_cache.h"
-#endif
+
+/* TODOs
+- tests
+- binary search GPU
+- various sensor model optimization methods
+*/
 
 // No inline
 #if _NO_INLINE == 1
@@ -339,31 +341,27 @@ namespace ranges {
 		template<class Archive>
 		void serialize(Archive & archive)
 		{
-			bool *g = (bool *)malloc(width*height*sizeof(bool));
-			int i = 0;
-			for (int x = 0; x < width; ++x) {
-				for (int y = 0; y < height; ++y) {
-					g[i] = grid[x][y];
-					i++;
-				}
-			}
 			archive( width, height ); // serialize things by passing them to the archive
-			archive(cereal::binary_data( g, width*height*sizeof(bool) ));
+			archive(grid);
+
+			// this stuff is for ROS integration, not necessary for raw usage
+			#if ROS_WORLD_TO_GRID_CONVERSION == 1
+			archive(true);
+			archive(world_scale); 
+			archive(world_angle);
+			archive(world_origin_x);
+			archive(world_origin_y);
+			archive(world_sin_angle);
+			archive(world_cos_angle);
+			#endif
 		}
 
 		template<class Archive>
 		void deserialize(Archive & archive)
 		{
 			archive( width, height ); // serialize things by passing them to the archive
-			bool *g = (bool *)malloc(width*height*sizeof(bool));
-			archive(cereal::binary_data( g, width*height*sizeof(bool) ));
-
 			grid.clear();
-			for (int i = 0; i < width; ++i) {
-				std::vector<bool> y_axis;
-				for (int q = 0; q < height; ++q) y_axis.push_back(false);
-				grid.push_back(y_axis);
-			}
+			archive(grid);
 			#if _MAKE_TRACE_MAP == 1
 			trace_grid.clear();
 			for (int i = 0; i < width; ++i) {
@@ -372,13 +370,26 @@ namespace ranges {
 				trace_grid.push_back(y_axis);
 			}
 			#endif
+			bool has_ros_to_grid_conversions;
+			archive(has_ros_to_grid_conversions);
 
-			int i = 0;
-			for (int x = 0; x < width; ++x) {
-				for (int y = 0; y < height; ++y) {
-					grid[x][y] = g[i];
-					i++;
-				}
+			if (has_ros_to_grid_conversions) {
+				#if ROS_WORLD_TO_GRID_CONVERSION == 1
+				archive(world_scale); 
+				archive(world_angle);
+				archive(world_origin_x);
+				archive(world_origin_y);
+				archive(world_sin_angle);
+				archive(world_cos_angle);
+				#else
+				float tmp;
+				archive(tmp);
+				archive(tmp);
+				archive(tmp);
+				archive(tmp);
+				archive(tmp);
+				archive(tmp);
+				#endif
 			}
 		}
 	};
@@ -473,37 +484,20 @@ namespace ranges {
 		template<class Archive>
 		void serialize(Archive & archive)
 		{
-			float *g = (float *)malloc(width*height*sizeof(float));
-			int i = 0;
-			for (int x = 0; x < width; ++x) {
-				for (int y = 0; y < height; ++y) {
-					g[i] = grid[x][y];
-					i++;
-				}
-			}
 			archive( width, height ); // serialize things by passing them to the archive
-			archive(cereal::binary_data( g, width*height*sizeof(float) ));
+			archive(grid);
 		}
 
 		template<class Archive>
 		void deserialize(Archive & archive)
 		{
 			archive( width, height ); // serialize things by passing them to the archive
-			float *g = (float *)malloc(width*height*sizeof(float));
-			archive(cereal::binary_data( g, width*height*sizeof(float) ));
-
 			grid.clear();
+			archive(grid);
 			for (int i = 0; i < width; ++i) {
 				std::vector<float> y_axis;
 				for (int q = 0; q < height; ++q) y_axis.push_back(false);
 				grid.push_back(y_axis);
-			}
-			int i = 0;
-			for (int x = 0; x < width; ++x) {
-				for (int y = 0; y < height; ++y) {
-					grid[x][y] = g[i];
-					i++;
-				}
 			}
 		}
 	};
@@ -522,7 +516,6 @@ namespace ranges {
 		float maxRange() { return max_range; }
 		float memory() { return -1; }
 		
-		
 		void saveTrace(std::string fn) { 
 			#if _MAKE_TRACE_MAP == 1
 			map.saveTrace(fn);
@@ -531,7 +524,6 @@ namespace ranges {
 			#endif
 		}
 		
-
 		// wrapper function to call calc_range repeatedly with the given array of inputs
 		// and store the result to the given outputs. Useful for avoiding cython function
 		// call overhead by passing it a numpy array pointer. Indexing assumes a 3xn numpy array
@@ -802,7 +794,8 @@ namespace ranges {
 		}
 
 		#endif
-	
+
+		 friend class CDDTCastGPU;
 	protected:
 		OMap map;
 		float max_range;
@@ -815,6 +808,7 @@ namespace ranges {
 	class RangeMethodGPU : public RangeMethod
 	{
 	public:
+		RangeMethodGPU() : RangeMethod() {}
 		RangeMethodGPU(OMap m, float mr) : RangeMethod(m, mr) {};
 		virtual ~RangeMethodGPU() {};
 
@@ -854,7 +848,6 @@ namespace ranges {
 		virtual void calc_range_chunk(float *ins, float *outs, int num_casts) {
 			std::cout << "calc_range_chunk must be defined by child class" << std::endl;
 		}
-
 	protected:
 		bool already_warned = false;
 	};
@@ -942,125 +935,6 @@ namespace ranges {
 		int memory() { return map.memory(); }
 	};
 
-	class RayMarchingGPU : public RangeMethodGPU
-	{
-	public:
-		RayMarchingGPU(OMap m, float mr) : RangeMethodGPU(m, mr) { 
-			distImage = new DistanceTransform(&m);
-			#if USE_CUDA == 1
-			rmc = new RayMarchingCUDA(distImage->grid, distImage->width, distImage->height, max_range);
-
-			#if ROS_WORLD_TO_GRID_CONVERSION == 1
-			rmc->set_conversion_params(m.world_scale,m.world_angle,m.world_origin_x, m.world_origin_y, 
-				m.world_sin_angle, m.world_cos_angle);
-			#endif
-
-			#else
-			throw std::string("Must compile with -DWITH_CUDA=ON to use this class.");
-			#endif
-		}
-		~RayMarchingGPU() {
-			delete distImage;
-			#if USE_CUDA == 1
-			delete rmc;
-			#else
-			throw std::string("Must compile with -DWITH_CUDA=ON to use this class.");
-			#endif
-		};
-
-		// this is called by calc_range_many with a maximum of CHUNK_SIZE casts
-		void calc_range_chunk(float *ins, float *outs, int num_casts) {
-			rmc->calc_range_many(ins,outs,num_casts);
-		}
-
-		// wrapper function to call calc_range repeatedly with the given array of inputs
-		// and store the result to the given outputs. Useful for avoiding cython function
-		// call overhead by passing it a numpy array pointer. Indexing assumes a 3xn numpy array
-		// for the inputs and a 1xn numpy array of the outputs
-		void numpy_calc_range(float * ins, float * outs, int num_casts) {
-			#if USE_CUDA == 1
-			#if ROS_WORLD_TO_GRID_CONVERSION == 0
-			std::cout << "Cannot use GPU numpy_calc_range without ROS_WORLD_TO_GRID_CONVERSION == 1" << std::endl;
-			return;
-			#endif
-			maybe_warn(num_casts);
-			int iters = std::ceil((float)num_casts / (float)CHUNK_SIZE);
-			for (int i = 0; i < iters; ++i) {
-				int num_in_chunk = CHUNK_SIZE;
-				if (i == iters - 1) num_in_chunk = num_casts-i*CHUNK_SIZE;
-				rmc->numpy_calc_range(&ins[i*CHUNK_SIZE*3],&outs[i*CHUNK_SIZE],num_in_chunk);
-			}
-			#else
-			throw std::string("Must compile with -DWITH_CUDA=ON to use this class.");
-			#endif
-		}
-
-		void numpy_calc_range_angles(float * ins, float * angles, float * outs, int num_particles, int num_angles) {
-			#if USE_CUDA == 1
-			#if ROS_WORLD_TO_GRID_CONVERSION == 0
-			std::cout << "Cannot use GPU numpy_calc_range without ROS_WORLD_TO_GRID_CONVERSION == 1" << std::endl;
-			return;
-			#endif
-			
-			int particles_per_iter = std::ceil((float)CHUNK_SIZE / (float)num_angles);
-			int iters = std::ceil((float)num_particles / (float) particles_per_iter);
-			// must allways do the correct number of angles, can only split on the particles
-			for (int i = 0; i < iters; ++i) {
-				int num_in_chunk = particles_per_iter;
-				if (i == iters - 1) num_in_chunk = num_particles-i*particles_per_iter;
-				rmc->numpy_calc_range_angles(&ins[i*num_in_chunk*3], angles, &outs[i*num_in_chunk*num_angles],
-					num_in_chunk, num_angles);
-			}
-			#else
-			throw std::string("Must compile with -DWITH_CUDA=ON to use this class.");
-			#endif
-		}
-
-		#if SENSOR_MODEL_HELPERS == 1
-		#if USE_CUDA == 1
-		void set_sensor_model(double *table, int table_width) {
-			// convert the sensor model from a numpy array to a vector array
-			for (int i = 0; i < table_width; ++i)
-			{
-				std::vector<double> table_row;
-				for (int j = 0; j < table_width; ++j)
-					table_row.push_back(table[table_width*i + j]);
-				sensor_model.push_back(table_row);
-			}
-			rmc->set_sensor_table(table, table_width);
-		}
-		#endif
-
-		// calc range for each pose, adding every angle, evaluating the sensor model
-		void calc_range_repeat_angles_eval_sensor_model(float * ins, float * angles, float * obs, double * weights, int num_particles, int num_angles) {
-			#if USE_CUDA == 1
-			#if ROS_WORLD_TO_GRID_CONVERSION == 0
-			std::cout << "Cannot use GPU numpy_calc_range without ROS_WORLD_TO_GRID_CONVERSION == 1" << std::endl;
-			return;
-			#endif
-			
-			int particles_per_iter = std::ceil((float)CHUNK_SIZE / (float)num_angles);
-			int iters = std::ceil((float)num_particles / (float) particles_per_iter);
-			// must allways do the correct number of angles, can only split on the particles
-			for (int i = 0; i < iters; ++i) {
-				int num_in_chunk = particles_per_iter;
-				if (i == iters - 1) num_in_chunk = num_particles-i*particles_per_iter;
-				rmc->calc_range_repeat_angles_eval_sensor_model(&ins[i*num_in_chunk*3], angles, obs, &weights[i*num_in_chunk],num_in_chunk, num_angles);
-			}
-			#else
-			throw std::string("Must compile with -DWITH_CUDA=ON to use this class.");
-			#endif
-		}
-		#endif
-	
-		int memory() { return distImage->memory(); }
-	protected:
-		DistanceTransform *distImage = 0;
-		#if USE_CUDA == 1
-		RayMarchingCUDA * rmc = 0;
-		#endif
-	};
-
 	class RayMarching : public RangeMethod
 	{
 	public:
@@ -1081,9 +955,7 @@ namespace ranges {
 			std::ifstream myFile;
 			myFile.open (fn, std::ios::in | std::ios::binary);
 			cereal::BinaryInputArchive archive( myFile );
-
 			RangeMethod::deserialize(archive);
-			// map.deserialize(archive);
 			distImage.deserialize(archive);
 			myFile.close();
 		}
@@ -1135,15 +1007,11 @@ namespace ranges {
 	class CDDTCast : public RangeMethod
 	{
 	public:
+		CDDTCast() : RangeMethod(), theta_discretization(0) {}
 		CDDTCast(OMap m, float mr, unsigned int td) :  RangeMethod(m, mr), theta_discretization(td) { 
 			#if _USE_CACHED_CONSTANTS
 			theta_discretization_div_M_2PI = theta_discretization / M_2PI;
 			M_2PI_div_theta_discretization = M_2PI / ((float) theta_discretization);
-			#endif
-
-			#if _USE_LRU_CACHE
-			cache = cache::lru_cache<uint64_t,float>(_LRU_CACHE_SIZE, -1);
-			key_maker = utils::KeyMaker<uint64_t>(m.width,m.height,theta_discretization);
 			#endif
 
 			// determines the width of the projection of the map along each angle
@@ -1322,6 +1190,59 @@ namespace ranges {
 			#endif
 		}
 
+		void serialize(std::string fn) {
+			std::ofstream myFile;
+			myFile.open (fn, std::ios::out | std::ios::binary);
+			cereal::BinaryOutputArchive archive( myFile );
+
+			RangeMethod::serialize(archive);
+
+			archive(theta_discretization);
+			archive(lut_translations);
+			archive(compressed_lut);
+
+			myFile.close();
+		}
+		void deserialize(std::string fn) {
+			std::ifstream myFile;
+			myFile.open (fn, std::ios::in | std::ios::binary);
+			cereal::BinaryInputArchive archive( myFile );
+			RangeMethod::deserialize(archive);
+			archive(theta_discretization);
+			archive(lut_translations);
+			archive(compressed_lut);
+
+			#if _USE_CACHED_TRIG == 1
+			cos_values.clear();
+			sin_values.clear();
+			for (i = 0; i < theta_discretization; ++i)
+			{
+				float angle = M_2PI * i / theta_discretization;
+				cos_values.push_back(cosf(angle));
+				sin_values.push_back(sinf(angle));
+			}
+			#endif
+
+			#if _USE_CACHED_CONSTANTS
+			theta_discretization_div_M_2PI = theta_discretization / M_2PI;
+			M_2PI_div_theta_discretization = M_2PI / ((float) theta_discretization);
+			#endif
+
+			#if _TRACK_COLLISION_INDEXES == 1
+			for (a = 0; a < theta_discretization; ++a) {
+				std::vector<std::set<int> > projection_lut_tracker;
+				for (i = 0; i < lut_widths[a]; ++i)
+				{
+					std::set<int> collection;
+					projection_lut_tracker.push_back(collection);
+				}
+				collision_table.push_back(projection_lut_tracker);
+			}
+			std::vector<std::vector<std::set<int> > > collision_table;
+			#endif
+			myFile.close();
+		}
+
 		int num_lut_elements() {
 			int lut_size = 0;
 			for (int a = 0; a < theta_discretization; ++a) {
@@ -1451,7 +1372,6 @@ namespace ranges {
 
 		// prunes the LUT according to the given collision table
 		void apply_collision_table(std::vector<std::vector<std::set<int> > > collision_table) {
-
 		}
 
 		// takes a continuous theta space and returns the nearest theta in the discrete LUT space
@@ -1512,22 +1432,6 @@ namespace ranges {
 		}
 
 		float ANIL calc_range(float x, float y, float heading) {
-			#if _USE_LRU_CACHE
-			int theta_key = (int) roundf(heading * theta_discretization_div_M_2PI);
-			// int theta_key = angle_index;
-			// if (is_flipped)
-			// 	theta_key += theta_discretization/2;
-			uint64_t key = key_maker.make_key(int(x), int(y), theta_key);
-			float val = cache.get(key);
-			if (val > 0) {
-				hits += 1;
-				return val;
-			} else {
-				misses += 1;
-			}
-			// if (cache.exists(key)) { return cache.get(key); }
-			#endif
-
 			int angle_index;
 			float discrete_theta;
 			bool is_flipped;
@@ -1559,23 +1463,14 @@ namespace ranges {
 
 				// there are no entries in this lut bin
 				if (high == -1) {
-					#if _USE_LRU_CACHE
-					cache.put(key, max_range);
-					#endif
 					return max_range;
 				}
 				// the furthest entry is behind the query point
 				if ((*lut_bin)[low] > lut_space_x) {
-					#if _USE_LRU_CACHE
-					cache.put(key, max_range);
-					#endif
 					return max_range;
 				}
 				if ((*lut_bin)[high]< lut_space_x) {
 					float val = lut_space_x - (*lut_bin)[high];
-					#if _USE_LRU_CACHE
-					cache.put(key, val);
-					#endif
 					return val;
 				}
 
@@ -1592,10 +1487,6 @@ namespace ranges {
 					#if _TRACK_COLLISION_INDEXES == 1
 					collision_table[angle_index][lut_index].insert(index);
 					#endif
-
-					#if _USE_LRU_CACHE
-					cache.put(key, val);
-					#endif
 					return val;
 				} else { // do linear search if array is very small
 					for (int i = high; i >= 0; --i)
@@ -1607,9 +1498,6 @@ namespace ranges {
 							#endif
 
 							float val = lut_space_x - obstacle_x;
-							#if _USE_LRU_CACHE
-							cache.put(key, val);
-							#endif
 							return val;
 						}
 					}
@@ -1622,23 +1510,14 @@ namespace ranges {
 
 				// there are no entries in this lut bin
 				if (high == -1) {
-					#if _USE_LRU_CACHE
-					cache.put(key, max_range);
-					#endif
 					return max_range;
 				}
 				// the furthest entry is behind the query point
 				if ((*lut_bin)[high] < lut_space_x) {
-					#if _USE_LRU_CACHE
-					cache.put(key, max_range);
-					#endif
 					return max_range;
 				}
 				if ((*lut_bin)[low] > lut_space_x) {
 					float val = (*lut_bin)[low] - lut_space_x;
-					#if _USE_LRU_CACHE
-					cache.put(key, val);
-					#endif
 					return val;
 				}
 				// the query point is on top of a occupied pixel
@@ -1656,10 +1535,6 @@ namespace ranges {
 					collision_table[angle_index][lut_index].insert(index);
 					#endif
 
-					#if _USE_LRU_CACHE
-					cache.put(key, val);
-					#endif
-
 					return val;
 				} else { // do linear search if array is very small
 					// std::cout << "L" ;//<< std::endl;
@@ -1672,11 +1547,6 @@ namespace ranges {
 							#endif
 
 							float val = obstacle_x - lut_space_x;
-
-							#if _USE_LRU_CACHE
-							cache.put(key, val);
-							#endif
-
 							return val;
 						}
 					}
@@ -1906,797 +1776,12 @@ namespace ranges {
 			(*ss) << "}}" << std::endl;
 		}
 
-		void report() {
-			#if _USE_LRU_CACHE
-			std::cout << "cache hits: " << hits << "  cache misses: " << misses << std::endl; 
-			#endif
-		}
-	// protected:
-		unsigned int theta_discretization;
-
-		// compressed_lut[theta][offset] -> list of obstacle positions
-		std::vector<std::vector<std::vector<float> > > compressed_lut;
-		// cached list of y translations necessary to project points into lut space
-		std::vector<float> lut_translations;
-		
-		#if _USE_CACHED_TRIG == 1
-		std::vector<float> cos_values;
-		std::vector<float> sin_values;
-		#endif
-
-		#if _USE_CACHED_CONSTANTS == 1
-		float theta_discretization_div_M_2PI;
-		float M_2PI_div_theta_discretization;
-		#endif
-
-		#if _TRACK_COLLISION_INDEXES == 1
-		std::vector<std::vector<std::set<int> > > collision_table;
-		#endif
-
-		#if _USE_LRU_CACHE
-		cache::lru_cache<uint64_t, float> cache;
-		utils::KeyMaker<uint64_t> key_maker;
-		int hits = 0;
-		int misses = 0;
-		#endif
-	};
-
-	class CDDTCast2 : public RangeMethodGPU
-	{
-	public:
-		CDDTCast2(OMap m, float mr, unsigned int td) :  
-			RangeMethodGPU(m, mr), theta_discretization(td), has_flat_array(false) { 
-			#if _USE_CACHED_CONSTANTS
-			theta_discretization_div_M_2PI = theta_discretization / M_2PI;
-			M_2PI_div_theta_discretization = M_2PI / ((float) theta_discretization);
-			#endif
-
-			#if _USE_LRU_CACHE
-			cache = cache::lru_cache<uint64_t,float>(_LRU_CACHE_SIZE, -1);
-			key_maker = utils::KeyMaker<uint64_t>(m.width,m.height,theta_discretization);
-			#endif
-
-			// determines the width of the projection of the map along each angle
-			std::vector<int> lut_widths;
-			// the angle for each theta discretization bin
-			std::vector<float> angles;
-
-			// cache these to avoid a lot of allocs
-			int i = 0, a = 0;
-			float angle = 0;
-
-			// compute useful constants and cache for later use
-			for (i = 0; i < theta_discretization; ++i)
-			{
-				#if _USE_CACHED_CONSTANTS
-				angle = i * M_2PI_div_theta_discretization;
-				#else
-				angle = M_2PI * i / theta_discretization;
-				#endif
-				angles.push_back(angle);
-
-				#if _USE_CACHED_TRIG == 1
-				float cosfangle = cosf(angle);
-				float sinfangle = sinf(angle);
-				cos_values.push_back(cosfangle);
-				sin_values.push_back(sinfangle);
-				#endif
-
-				// compute the height of the axis aligned bounding box, which will determine
-				// the necessary width of the lookup table for this angle
-				#if _USE_CACHED_TRIG == 1
-				float rotated_height = std::abs(map.width * sinfangle) + std::abs(map.height * cosfangle);
-				#else
-				float rotated_height = std::abs(map.width * sinf(angle)) + std::abs(map.height * cosf(angle));
-				#endif
-				unsigned int lut_width = ceil(rotated_height - _EPSILON);
-				lut_widths.push_back(lut_width);
-
-				/* the entire map will be rotated by the given angle. Every pixel in t hat map must be
-				   projected into the LUT, so we need to make sure that the index of every pixel will be 
-				   positive when projected into LUT space. For example, here's the example with no rotation
-
-                    (0,height)  (width,height)      {
-						    *----------*    -----------> []
-						    |  a       |    -----------> [a] 
-						    |      b   |    -----------> [b] 
-						    |  c      d|    -----------> [c,d]
-						    *----------o    -----------> []
-						  (0,0)       (width,0)           }
-
-					 This is the case when theta = pi / 2 radians (not totally to scale)
-
-				   (-height,width) (0,width)      {
-					  	     *--------*    -----------> []
-					  	     |       d|    -----------> [d] 
-					  	     |   b    |    -----------> [b] 
-					  	     |        |    -----------> []
-					  	     | a   c  |    -----------> [a,c]
-					  	     *--------o    -----------> []
-				     (-height,0)  (0,0)                }
-
-				   Notably, the corner labeled 'o' lies on the origin no matter the rotation. Therefore,
-				   to ensure every LUT index is positive, we should translate the rotated map by:
-				   	         max(0, -1 * [minimum y coordinate for each corner])
-				*/
-				
-				// this is the y-coordinate for each non-origin corner
-				#if _USE_CACHED_TRIG == 1
-				float left_top_corner_y     = map.height * cosfangle;
-				float right_top_corner_y    = map.width * sinfangle + map.height * cosfangle;
-				float right_bottom_corner_y = map.width * sinfangle;
-				#else
-				float left_top_corner_y     = map.height * cosf(angle);
-				float right_top_corner_y    = map.width * sinf(angle) + map.height * cosf(angle);
-				float right_bottom_corner_y = map.width * sinf(angle);
-				#endif
-				
-				// find the lowest corner, and determine the translation necessary to make them all positive
-				float min_corner_y = std::min(left_top_corner_y, std::min(right_top_corner_y, right_bottom_corner_y));
-				float lut_translation = std::max(0.0, -1.0 * min_corner_y - _EPSILON);
-
-				lut_translations.push_back(lut_translation);
-			}
-
-			// build the empty LUT datastructure
-			for (a = 0; a < theta_discretization; ++a)
-			{
-				std::vector<std::vector<float> > projection_lut;
-				for (i = 0; i < lut_widths[a]; ++i)
-				{
-					std::vector<float> column;
-					projection_lut.push_back(column);
-				}
-				compressed_lut.push_back(projection_lut);
-			}
-
-			// compute the edge map of the geometry - no ray can intersect with non-edge geometry,
-			// so pruning it now will speed up LUT construction, especially for dense maps
-			OMap edge_map = map.make_edge_map(true);
-			// edge_map.save("./edge_map.png");
-
-			// fill the LUT datastructure by projecting each occupied pixel into LUT space and storing
-			// the x position in LUT space at the correct place as determined by y position and theta
-			// cache these to avoid a lot of allocs
-			int x = 0, y = 0;
-			int upper_bin = 0, lower_bin = 0;
-			float half_lut_space_width = 0, lut_space_center_x = 0, lut_space_center_y = 0;
-			float cosangle = 0, sinangle = 0;
-			for (x = 0; x < map.width; ++x) {
-				for (y = 0; y < map.height; ++y) {
-					// if (map.isOccupied(x,y)) {
-						if (edge_map.isOccupied(x,y)) {
-						// this (x,y) is occupied, so add it to the datastruture
-						std::pair<float, float> pixel_center =  std::make_pair(x + 0.5, y + 0.5);
-						for (a = 0; a < theta_discretization / 2.0; ++a) {
-							#if _USE_CACHED_TRIG == 1
-							cosangle = cos_values[a];
-							sinangle = sin_values[a];
-							#else
-							angle = angles[a];
-							cosangle = cosf(angle);
-							sinangle = sinf(angle);
-							#endif
-
-							half_lut_space_width = (std::abs(sinangle) + std::abs(cosangle)) / 2.0;
-
-							lut_space_center_x = pixel_center.first * cosangle - pixel_center.second * sinangle;
-							lut_space_center_y = (pixel_center.first * sinangle + pixel_center.second * cosangle) + lut_translations[a];
-
-							upper_bin = lut_space_center_y + half_lut_space_width - _EPSILON;
-							lower_bin = lut_space_center_y - half_lut_space_width + _EPSILON;
-
-							for (i = lower_bin; i <= upper_bin; ++i) 
-								compressed_lut[a][i].push_back(lut_space_center_x);
-
-							// std::cout << std::endl;
-							// std::cout << "angle: " << angle << std::endl;
-							// std::cout << "center: (" << pixel_center.first << ", " << pixel_center.second << ")" << std::endl;
-							// std::cout << "new center: (" << lut_space_center_x << ", " << lut_space_center_y << ")" << std::endl;
-							// std::cout << "bins:" << upper_bin << "    " << (int) lut_space_center_y << "   " << lower_bin << std::endl;
-							// std::cout << "width:" << half_lut_space_width << std::endl;
-							// std::cout << "trans" << lut_translations[a] << std::endl;
-							// std::cout << upper_bin << "   " << lower_bin << "   " << lut_translations[a] << std::endl;
-							// std::cout << lut_space_center_x << "  " << lut_space_center_y << std::endl;
-						}
-					}
-				}
-			}
-
-			// sort the vectors for faster lookup with binary search
-			for (a = 0; a < theta_discretization; ++a)
-			{
-				for (i = 0; i < compressed_lut[a].size(); ++i)
-				{
-					// sort the vectors
-					std::sort(compressed_lut[a][i].begin(), compressed_lut[a][i].end());
-
-					// remove all duplicate entries, they will not change the answer
-					compressed_lut[a][i].erase( unique( compressed_lut[a][i].begin(), compressed_lut[a][i].end() ), compressed_lut[a][i].end());
-				}
-			}
-
-			#if _TRACK_LUT_SIZE == 1
-				std::cout << "LUT SIZE (MB): " << lut_size() / 1000000.0 << std::endl;
-			#endif
-
-			#if _TRACK_COLLISION_INDEXES == 1
-			for (a = 0; a < theta_discretization; ++a) {
-				std::vector<std::set<int> > projection_lut_tracker;
-				for (i = 0; i < lut_widths[a]; ++i)
-				{
-					std::set<int> collection;
-					projection_lut_tracker.push_back(collection);
-				}
-				collision_table.push_back(projection_lut_tracker);
-			}
-			#endif
-		}
-
-		// this function creates a flat array out of the 3D CDDT vector container for use
-		// on a GPU. It is not called in the init function so that it can be done either
-		// before or after pruning
-		void flatten() {
-			// free old array in case this function is called more than once
-			if (has_flat_array) {
-				free(compressed_lut_ptr);
-				free(compressed_lut_index);
-				free(lut_slice_widths);
-				free(lut_bin_widths);
-			}
-
-			int num_els = num_lut_elements();
-
-			compressed_lut_ptr = (float *) malloc(num_els*sizeof(float));
-			has_flat_array = true;
-
-			int ind = 0;
-			max_lut_width = 0;
-			// populate the compressed lut array
-			for (int a = 0; a < theta_discretization; ++a)
-			{
-				// find the largest size width
-				if (compressed_lut[a].size() > max_lut_width) max_lut_width = compressed_lut[a].size();
-				for (int i = 0; i < compressed_lut[a].size(); ++i)
-				{
-					std::copy(compressed_lut[a][i].begin(), compressed_lut[a][i].end(), 
-						&compressed_lut_ptr[ind]);
-					ind += compressed_lut[a][i].size();
-				}
-			}
-
-			#if FLAT_POINTER_INDEX == 1
-			// create pointer structure into the compressed lut array to help indexing
-			compressed_lut_index = (float **) malloc(max_lut_width*theta_discretization*sizeof(float*));
-			#else
-			compressed_lut_index = (unsigned int*) malloc(max_lut_width*theta_discretization*sizeof(unsigned int));
-			#endif
-
-			ind = 0;
-			// populate the compressed lut index
-			for (int a = 0; a < theta_discretization; ++a)
-			{
-				for (int i = 0; i < compressed_lut[a].size(); ++i)
-				{
-					#if FLAT_POINTER_INDEX == 1
-					compressed_lut_index[a*max_lut_width+i] = &compressed_lut_ptr[ind];
-					#else
-					compressed_lut_index[a*max_lut_width+i] = ind;
-					#endif
-					ind += compressed_lut[a][i].size();
-				}
-			}
-
-			lut_slice_widths = (unsigned short*) malloc(theta_discretization*sizeof(unsigned short));
-			lut_bin_widths = (unsigned short*) malloc(max_lut_width*theta_discretization*sizeof(unsigned short));
-			// populate the arrays which provide size information
-			for (int a = 0; a < theta_discretization; ++a)
-			{
-				lut_slice_widths[a] = compressed_lut[a].size();
-				for (int i = 0; i < compressed_lut[a].size(); ++i)
-				{
-					lut_bin_widths[a*max_lut_width+i] = compressed_lut[a][i].size();
-				}
-			}
-			std::cout << "done flattening:" << max_lut_width << " " << sizeof(float*) << " " << sizeof(unsigned int) << std::endl;
-		}
-
-		int num_lut_elements() {
-			int lut_size = 0;
-			for (int a = 0; a < theta_discretization; ++a) {
-				for (int i = 0; i < compressed_lut[a].size(); ++i) {
-					lut_size += compressed_lut[a][i].size();
-				}
-			}
-			return lut_size;
-		}
-
-		int lut_size() {
-			return num_lut_elements() * sizeof(float);
-		}
-
-		int memory() { return lut_size()+map.memory()+lut_translations.size()*sizeof(float); }
-
-		// mark all of the LUT entries that are potentially useful
-		// remove all LUT entries that are not potentially useful
-		void prune(float max_range) {
-			std::vector<std::vector<std::set<int> > > local_collision_table;
-
-			for (int a = 0; a < theta_discretization / 2.0; ++a) {
-				std::vector<std::set<int> > projection_lut_tracker;
-				for (int i = 0; i < compressed_lut[a].size(); ++i) {
-					std::set<int> collection;
-					projection_lut_tracker.push_back(collection);
-				}
-				local_collision_table.push_back(projection_lut_tracker);
-			}
-
-			for (int angle_index = 0; angle_index < theta_discretization / 2.0; ++angle_index) {
-				#if _USE_CACHED_CONSTANTS
-				float angle = angle_index * M_2PI_div_theta_discretization;
-				#else
-				float angle = M_2PI * angle_index / theta_discretization;
-				#endif
-
-				#if _USE_CACHED_TRIG == 1
-				float cosangle = cos_values[angle_index];
-				float sinangle = sin_values[angle_index];
-				#else
-				float cosangle = cosf(angle);
-				float sinangle = sinf(angle);
-				#endif
-
-				// float cosangle = cos_values[angle_index];
-				// float sinangle = sin_values[angle_index];
-				float translation = lut_translations[angle_index];
-				
-				float lut_space_x;
-				float lut_space_y;
-				unsigned int lut_index;
-				std::vector<float> *lut_bin;
-				for (int x = 0; x < map.grid.size(); ++x) {
-					float _x = 0.5 + x;
-					for (int y = 0; y < map.grid[0].size(); ++y) {
-						float _y = 0.5 + y;
-						lut_space_x = _x * cosangle - _y * sinangle;
-						lut_space_y = (_x * sinangle + _y * cosangle) + translation;
-						lut_index = (int) lut_space_y;
-
-						lut_bin = &compressed_lut[angle_index][lut_index];
-
-						// binary search for next greatest element
-						// int low = 0;
-						int high = lut_bin->size() - 1;
-
-						// there are no entries in this lut bin
-						if (high == -1) continue;
-						if (map.grid[x][y]) continue;
-
-						// the furthest entry is behind the query point
-						// if ((*lut_bin)[high] + max_range < lut_space_x) return std::make_pair(max_range, max_range);
-						if ((*lut_bin)[high] < lut_space_x && lut_space_x - (*lut_bin)[high] < max_range) {
-							local_collision_table[angle_index][lut_index].insert(high);
-							// accum += 1;
-							continue;
-						}
-
-						int index;
-						if (high > _BINARY_SEARCH_THRESHOLD) {
-							// once the binary search terminates, the next greatest element is indicated by 'val'
-							index = std::lower_bound(lut_bin->begin(), lut_bin->end(), lut_space_x) - lut_bin->begin();
-						} else { // do linear search if array is very small
-							for (int i = 0; i < lut_bin->size(); ++i) {
-								if ((*lut_bin)[i] >= lut_space_x) {
-									index = i;
-									break;
-								}
-							}
-						}
-
-						int inverse_index = index - 1;
-						if (inverse_index == -1) {
-							local_collision_table[angle_index][lut_index].insert(index);
-							continue;
-						} else {
-							local_collision_table[angle_index][lut_index].insert(index);
-							local_collision_table[angle_index][lut_index].insert(inverse_index);
-							continue;
-						}
-
-					}
-				}
-			}
-
-			#if _TRACK_LUT_SIZE == 1
-			std::cout << "OLD LUT SIZE (MB): " << lut_size() / 1000000.0 << std::endl;
-			#endif
-
-			for (int a = 0; a < theta_discretization / 2.0; ++a) {
-				for (int lut_index = 0; lut_index < compressed_lut[a].size(); ++lut_index) {
-					std::vector<float> pruned_bin;
-
-					for (int i = 0; i < compressed_lut[a][lut_index].size(); ++i) {
-						bool is_used = local_collision_table[a][lut_index].find(i) != local_collision_table[a][lut_index].end();
-						if (is_used) pruned_bin.push_back(compressed_lut[a][lut_index][i]);
-					}
-					compressed_lut[a][lut_index] = pruned_bin;
-				}
-			}
-
-			#if _TRACK_LUT_SIZE == 1
-			std::cout << "NEW LUT SIZE (MB): " << lut_size() / 1000000.0 << std::endl;
-			#endif
-		}
-
-		// takes a continuous theta space and returns the nearest theta in the discrete LUT space
-		// as well as the bin index that the given theta falls into
-		std::tuple<int, float, bool>  discretize_theta(float theta) {
-			#if _USE_ALTERNATE_MOD
-			if (theta < 0.0) {
-				while (theta < 0.0) {
-					theta += M_2PI;
-				}
-			} else if (theta > M_2PI) {
-				while (theta > M_2PI) {
-					theta -= M_2PI;
-				}
-			}
-			#else
-			theta = fmod(theta, M_2PI);
-			// fmod does not wrap the angle into the positive range, so this will fix that if necessary
-			if (theta < 0.0)
-   			theta += M_2PI;
-   			#endif
-
-			// exploit rotational symmetry by wrapping the theta range around to the range 0:pi
-			bool is_flipped = false;
-			if (theta >= M_PI) {
-				is_flipped = true;
-				theta -= M_PI;
-			}
-
-   			#if _USE_CACHED_CONSTANTS == 1
-				#if _USE_FAST_ROUND == 1
-				int rounded = int (theta * theta_discretization_div_M_2PI + 0.5);
-				#else
-				int rounded = (int) roundf(theta * theta_discretization_div_M_2PI);
-				#endif
-				// this handles the special case where the theta rounds up and should wrap around
-				if (rounded == theta_discretization >> 1) {
-					rounded = 0;
-					is_flipped = !is_flipped;
-				}
-					int binned = rounded % theta_discretization;
-				float discrete_angle = binned * M_2PI_div_theta_discretization;
-   			#else
-				#if _USE_FAST_ROUND == 1
-				int rounded = int ((theta * theta_discretization / M_2PI) + 0.5);
-				#else
-				int rounded = (int) roundf(theta * theta_discretization / M_2PI);
-				#endif
-				// this handles the special case where the theta rounds up and should wrap around
-				if (rounded == theta_discretization >> 1) {
-					rounded = 0;
-					is_flipped = !is_flipped;
-				}
-				int binned = rounded % theta_discretization;
-				float discrete_angle = (binned * M_2PI) / ((float) theta_discretization);
-			#endif
-			return std::make_tuple(binned, discrete_angle, is_flipped);
-		}
-
-		// float ANIL calc_range(float x, float y, float heading) {
-		// 	int angle_index;
-		// 	float discrete_theta;
-		// 	bool is_flipped;
-		// 	std::tie(angle_index, discrete_theta, is_flipped) = discretize_theta(-1.0*heading);
-			
-		// 	float cosangle;// = cosf(discrete_theta);
-		// 	float sinangle;// = sinf(discrete_theta);
-		// 	sincosf();
-		// 	float lut_space_x = x * cosangle - y * sinangle;
-		// 	float lut_space_y = (x * sinangle + y * cosangle) + lut_translations[angle_index];
-
-		// 	int lut_index = (int) lut_space_y;
-		// 	// this is to prevent segfaults
-		// 	if (lut_index < 0 || lut_index >= lut_slice_widths[angle_index])
-		// 		return max_range;
-
-		// 	#if FLAT_POINTER_INDEX == 1
-		// 	float *lut_bin = compressed_lut_index[angle_index*max_lut_width+lut_index];
-		// 	#else
-		// 	float *lut_bin = &compressed_lut_ptr[compressed_lut_index[angle_index*max_lut_width+lut_index]];
-		// 	#endif
-
-		// 	// this should be replaced with something that does not rely on the vector
-		// 	// int lut_bin_width = compressed_lut[angle_index][lut_index].size();
-		// 	int lut_bin_width = lut_bin_widths[angle_index*max_lut_width+lut_index];
-
-		// 	// the angle is in range pi:2pi, so we must search in the opposite direction
-		// 	if (is_flipped) {
-		// 		// std::cout << "flipped" << std::endl;
-		// 		// binary search for next greatest element
-		// 		int low = 0;
-		// 		int high = lut_bin_width - 1;
-
-		// 		// there are no entries in this lut bin
-		// 		if (high == -1) {
-		// 			return max_range;
-		// 		}
-		// 		// the furthest entry is behind the query point
-		// 		// if ((*lut_bin)[low] > lut_space_x) {
-		// 		if (lut_bin[low] > lut_space_x) {
-		// 			return max_range;
-		// 		}
-		// 		if (lut_bin[high]< lut_space_x) {
-		// 			return lut_space_x - lut_bin[high];
-		// 		}
-
-		// 		// the query point is on top of a occupied pixel
-		// 		// this call is here rather than at the beginning, because it is apparently more efficient.
-		// 		// I presume that this has to do with the previous two return statements
-		// 		if (map.grid[x][y]) { return 0.0; }
-
-		// 		if (high > _BINARY_SEARCH_THRESHOLD) {
-		// 			// int index = std::upper_bound(lut_bin->begin(), lut_bin->end(), lut_space_x) - lut_bin->begin();
-		// 			int index = std::upper_bound(lut_bin, lut_bin+lut_bin_width, lut_space_x) - lut_bin;
-		// 			assert(index > 0); // if index is 0, this will segfault. that should never happen, though.
-		// 			return lut_space_x - lut_bin[index-1];
-		// 		} else { // do linear search if array is very small
-		// 			for (int i = high; i >= 0; --i)
-		// 			{
-		// 				float obstacle_x = lut_bin[i];
-		// 				if (obstacle_x <= lut_space_x) {
-		// 					return lut_space_x - obstacle_x;
-		// 				}
-		// 			}
-		// 		}
-		// 	} else {
-		// 		// std::cout << "not flipped" << std::endl;
-		// 		// binary search for next greatest element
-		// 		int low = 0;
-		// 		int high = lut_bin_width - 1;
-
-		// 		// there are no entries in this lut bin
-		// 		if (high == -1) {
-		// 			return max_range;
-		// 		}
-		// 		// the furthest entry is behind the query point
-		// 		if (lut_bin[high] < lut_space_x) {
-		// 			return max_range;
-		// 		}
-		// 		if (lut_bin[low] > lut_space_x) {
-		// 			return lut_bin[low] - lut_space_x;
-		// 		}
-		// 		// the query point is on top of a occupied pixel
-		// 		// this call is here rather than at the beginning, because it is apparently more efficient.
-		// 		// I presume that this has to do with the previous two return statements
-		// 		if (map.grid[x][y]) { return 0.0; }
-
-		// 		if (high > _BINARY_SEARCH_THRESHOLD) {
-		// 			// once the binary search terminates, the next greatest element is indicated by 'val'
-		// 			// int index = std::upper_bound(lut_bin->begin(), lut_bin->end(), lut_space_x) - lut_bin->begin();
-		// 			int index = std::upper_bound(lut_bin, lut_bin+lut_bin_width, lut_space_x) - lut_bin;
-		// 			return lut_bin[index] - lut_space_x;
-		// 		} else { // do linear search if array is very small
-		// 			// std::cout << "L" ;//<< std::endl;
-		// 			for (int i = 0; i < lut_bin_width; ++i)
-		// 			{
-		// 				float obstacle_x = lut_bin[i];
-		// 				if (obstacle_x >= lut_space_x) {
-		// 					return obstacle_x - lut_space_x;
-		// 				}
-		// 			}
-		// 		}
-		// 	}
-		// 	// this should never occur, if it does, there's an error
-		// 	assert(0);
-		// 	return -1.0;
-		// }
-		
-
-		float ANIL calc_range(float x, float y, float heading) {
-			#if _USE_LRU_CACHE
-			int theta_key = (int) roundf(heading * theta_discretization_div_M_2PI);
-			// int theta_key = angle_index;
-			// if (is_flipped)
-			// 	theta_key += theta_discretization/2;
-			uint64_t key = key_maker.make_key(int(x), int(y), theta_key);
-			float val = cache.get(key);
-			if (val > 0) {
-				hits += 1;
-				return val;
-			} else {
-				misses += 1;
-			}
-			// if (cache.exists(key)) { return cache.get(key); }
-			#endif
-
-			int angle_index;
-			float discrete_theta;
-			bool is_flipped;
-			std::tie(angle_index, discrete_theta, is_flipped) = discretize_theta(-1.0*heading);
-
-			#if _USE_CACHED_TRIG == 1
-			float cosangle = cos_values[angle_index];
-			float sinangle = sin_values[angle_index];
-			#else
-			float cosangle = cosf(discrete_theta);
-			float sinangle = sinf(discrete_theta);
-			// __sincosf(discrete_theta, &sinangle, &cosangle);
-			#endif
-
-			// compute LUT translation
-			float lut_space_x = x * cosangle - y * sinangle;
-			float lut_space_y = (x * sinangle + y * cosangle) + lut_translations[angle_index];
-
-			int lut_index = (int) lut_space_y;
-			// this is to prevent segfaults
-			if (lut_index < 0 || lut_index >= compressed_lut[angle_index].size())
-				return max_range;
-			std::vector<float> *lut_bin = &compressed_lut[angle_index][lut_index];
-
-			// the angle is in range pi:2pi, so we must search in the opposite direction
-			if (is_flipped) {
-				// std::cout << "flipped" << std::endl;
-				// binary search for next greatest element
-				int low = 0;
-				int high = lut_bin->size() - 1;
-
-				// there are no entries in this lut bin
-				if (high == -1) {
-					#if _USE_LRU_CACHE
-					cache.put(key, max_range);
-					#endif
-					return max_range;
-				}
-				// the furthest entry is behind the query point
-				if ((*lut_bin)[low] > lut_space_x) {
-					#if _USE_LRU_CACHE
-					cache.put(key, max_range);
-					#endif
-					return max_range;
-				}
-				if ((*lut_bin)[high]< lut_space_x) {
-					float val = lut_space_x - (*lut_bin)[high];
-					#if _USE_LRU_CACHE
-					cache.put(key, val);
-					#endif
-					return val;
-				}
-
-				// the query point is on top of a occupied pixel
-				// this call is here rather than at the beginning, because it is apparently more efficient.
-				// I presume that this has to do with the previous two return statements
-				if (map.grid[x][y]) { return 0.0; }
-
-				if (high > _BINARY_SEARCH_THRESHOLD) {
-					int index = std::upper_bound(lut_bin->begin(), lut_bin->end(), lut_space_x) - lut_bin->begin();
-					assert(index > 0); // if index is 0, this will segfault. that should never happen, though.
-					float val = lut_space_x - (*lut_bin)[index-1];
-					
-					#if _TRACK_COLLISION_INDEXES == 1
-					collision_table[angle_index][lut_index].insert(index);
-					#endif
-
-					#if _USE_LRU_CACHE
-					cache.put(key, val);
-					#endif
-					return val;
-				} else { // do linear search if array is very small
-					for (int i = high; i >= 0; --i)
-					{
-						float obstacle_x = (*lut_bin)[i];
-						if (obstacle_x <= lut_space_x) {
-							#if _TRACK_COLLISION_INDEXES == 1
-							collision_table[angle_index][lut_index].insert(i);
-							#endif
-
-							float val = lut_space_x - obstacle_x;
-							#if _USE_LRU_CACHE
-							cache.put(key, val);
-							#endif
-							return val;
-						}
-					}
-				}
-			} else {
-				// std::cout << "not flipped" << std::endl;
-				// binary search for next greatest element
-				int low = 0;
-				int high = lut_bin->size() - 1;
-
-				// there are no entries in this lut bin
-				if (high == -1) {
-					#if _USE_LRU_CACHE
-					cache.put(key, max_range);
-					#endif
-					return max_range;
-				}
-				// the furthest entry is behind the query point
-				if ((*lut_bin)[high] < lut_space_x) {
-					#if _USE_LRU_CACHE
-					cache.put(key, max_range);
-					#endif
-					return max_range;
-				}
-				if ((*lut_bin)[low] > lut_space_x) {
-					float val = (*lut_bin)[low] - lut_space_x;
-					#if _USE_LRU_CACHE
-					cache.put(key, val);
-					#endif
-					return val;
-				}
-				// the query point is on top of a occupied pixel
-				// this call is here rather than at the beginning, because it is apparently more efficient.
-				// I presume that this has to do with the previous two return statements
-				if (map.grid[x][y]) { return 0.0; }
-
-				if (high > _BINARY_SEARCH_THRESHOLD) {
-					// once the binary search terminates, the next greatest element is indicated by 'val'
-					// float val = *std::lower_bound(lut_bin->begin(), lut_bin->end(), lut_space_x);
-					int index = std::upper_bound(lut_bin->begin(), lut_bin->end(), lut_space_x) - lut_bin->begin();
-					float val = (*lut_bin)[index] - lut_space_x;
-					
-					#if _TRACK_COLLISION_INDEXES == 1
-					collision_table[angle_index][lut_index].insert(index);
-					#endif
-
-					#if _USE_LRU_CACHE
-					cache.put(key, val);
-					#endif
-
-					return val;
-				} else { // do linear search if array is very small
-					// std::cout << "L" ;//<< std::endl;
-					for (int i = 0; i < lut_bin->size(); ++i)
-					{
-						float obstacle_x = (*lut_bin)[i];
-						if (obstacle_x >= lut_space_x) {
-							#if _TRACK_COLLISION_INDEXES == 1
-							collision_table[angle_index][lut_index].insert(i);
-							#endif
-
-							float val = obstacle_x - lut_space_x;
-
-							#if _USE_LRU_CACHE
-							cache.put(key, val);
-							#endif
-
-							return val;
-						}
-					}
-				}
-			}
-			// this should never occur, if it does, there's an error
-			assert(0);
-			return -1.0;
-		}
-
-		// this is called by calc_range_many with a maximum of CHUNK_SIZE casts
-		void calc_range_chunk(float *ins, float *outs, int num_casts) {
-			// rmc->calc_range_many(ins,outs,num_casts);
-		}
-
 		void report() {}
 	// protected:
 		unsigned int theta_discretization;
 
 		// compressed_lut[theta][offset] -> list of obstacle positions
 		std::vector<std::vector<std::vector<float> > > compressed_lut;
-
-		unsigned int max_lut_width;
-		bool has_flat_array;
-		float *compressed_lut_ptr;
-		// this is indexed by angle and offset
-		unsigned short *lut_bin_widths;
-		// this is indexed by angle
-		unsigned short *lut_slice_widths;
-		#if FLAT_POINTER_INDEX == 1
-		float **compressed_lut_index;
-		#else
-		unsigned int *compressed_lut_index;
-		#endif
 		// cached list of y translations necessary to project points into lut space
 		std::vector<float> lut_translations;
 		
@@ -2713,139 +1798,7 @@ namespace ranges {
 		#if _TRACK_COLLISION_INDEXES == 1
 		std::vector<std::vector<std::set<int> > > collision_table;
 		#endif
-
-		#if _USE_LRU_CACHE
-		cache::lru_cache<uint64_t, float> cache;
-		utils::KeyMaker<uint64_t> key_maker;
-		int hits = 0;
-		int misses = 0;
-		#endif
 	};
-
-	class CDDTCastGPU : public RangeMethodGPU
-	{
-	public:
-		CDDTCastGPU(OMap m, float mr, unsigned int td) : RangeMethodGPU(m, mr), theta_discretization(td), has_flat_array(false) {
-
-			#if USE_CUDA == 1
-			cpu_cddt = new CDDTCast(m, mr, td);
-			cddt_gpu = new CDDTCUDA(m.grid, m.width, m.height, max_range, theta_discretization);
-			flatten();
-			#else
-			throw std::string("Must compile with -DWITH_CUDA=ON to use this class.");
-			#endif
-		};
-		~CDDTCastGPU() {};
-
-		// this function creates a flat array out of the 3D CDDT vector container for use
-		// on a GPU. It is not called in the init function so that it can be done either
-		// before or after pruning
-		void flatten() {
-			// free old array in case this function is called more than once
-			if (has_flat_array) {
-				free(compressed_lut_ptr);
-				free(compressed_lut_index);
-				free(lut_slice_widths);
-				free(lut_bin_widths);
-			}
-
-			int num_els = cpu_cddt->num_lut_elements();
-			compressed_lut_ptr = (float *) malloc(num_els*sizeof(float));
-			has_flat_array = true;
-
-			int ind = 0;
-			max_lut_width = 0;
-			// populate the compressed lut array
-			for (int a = 0; a < theta_discretization; ++a)
-			{
-				// find the largest size width
-				if (cpu_cddt->compressed_lut[a].size() > max_lut_width) 
-					max_lut_width = cpu_cddt->compressed_lut[a].size();
-				for (int i = 0; i < cpu_cddt->compressed_lut[a].size(); ++i)
-				{
-					std::copy(cpu_cddt->compressed_lut[a][i].begin(), 
-						cpu_cddt->compressed_lut[a][i].end(), 
-						&compressed_lut_ptr[ind]);
-					ind += cpu_cddt->compressed_lut[a][i].size();
-				}
-			}
-
-			#if FLAT_POINTER_INDEX == 1
-			// create pointer structure into the compressed lut array to help indexing
-			compressed_lut_index = (float **) malloc(max_lut_width*theta_discretization*sizeof(float*));
-			#else
-			compressed_lut_index = (unsigned int*) malloc(max_lut_width*theta_discretization*sizeof(unsigned int));
-			#endif
-
-			ind = 0;
-			// populate the compressed lut index
-			for (int a = 0; a < theta_discretization; ++a)
-			{
-				for (int i = 0; i < cpu_cddt->compressed_lut[a].size(); ++i)
-				{
-					#if FLAT_POINTER_INDEX == 1
-					compressed_lut_index[a*max_lut_width+i] = &compressed_lut_ptr[ind];
-					#else
-					compressed_lut_index[a*max_lut_width+i] = ind;
-					#endif
-					ind += cpu_cddt->compressed_lut[a][i].size();
-				}
-				// fill the rest with zeros to avoid weirdness
-				for (int i = cpu_cddt->compressed_lut[a].size(); i < max_lut_width; ++i)
-				{
-					#if FLAT_POINTER_INDEX == 1
-					compressed_lut_index[a*max_lut_width+i] = compressed_lut_ptr;
-					#else
-					compressed_lut_index[a*max_lut_width+i] = 0;
-					#endif
-				}
-			}
-
-			lut_slice_widths = (unsigned short*) malloc(theta_discretization*sizeof(unsigned short));
-			lut_bin_widths = (unsigned short*) malloc(max_lut_width*theta_discretization*sizeof(unsigned short));
-			// populate the arrays which provide size information
-			for (int a = 0; a < theta_discretization; ++a)
-			{
-				lut_slice_widths[a] = cpu_cddt->compressed_lut[a].size();
-				for (int i = 0; i < cpu_cddt->compressed_lut[a].size(); ++i) {
-					lut_bin_widths[a*max_lut_width+i] = cpu_cddt->compressed_lut[a][i].size();
-				}
-			}
-
-			cddt_gpu->init_buffers(compressed_lut_ptr, compressed_lut_index, lut_slice_widths, lut_bin_widths, num_els, max_lut_width, &cpu_cddt->lut_translations[0]);
-			std::cout << "done flattening:" << max_lut_width << " " << sizeof(float*) << " " << sizeof(unsigned int) << std::endl;
-		}
-
-		void prune(float max_range) { 
-			cpu_cddt->prune(max_range); 
-			flatten();
-		}
-
-		void calc_range_chunk(float *ins, float *outs, int num_casts) {
-			cddt_gpu->calc_range_many(ins, outs, num_casts);
-		}
-	protected:
-		CDDTCast *cpu_cddt = 0;
-		unsigned int theta_discretization;
-
-		unsigned int max_lut_width;
-		bool has_flat_array;
-		float *compressed_lut_ptr;
-		// this is indexed by angle and offset
-		unsigned short *lut_bin_widths;
-		// this is indexed by angle
-		unsigned short *lut_slice_widths;
-		#if FLAT_POINTER_INDEX == 1
-		float **compressed_lut_index;
-		#else
-		unsigned int *compressed_lut_index;
-		#endif
-
-		#if USE_CUDA == 1
-		CDDTCUDA * cddt_gpu = 0;
-		#endif
-	};
-
 
 	class GiantLUTCast : public RangeMethod
 	{
@@ -2855,7 +1808,7 @@ namespace ranges {
 		#else
 		typedef float lut_t;
 		#endif
-
+		GiantLUTCast() : theta_discretization(0), RangeMethod() {}
 		GiantLUTCast(OMap m, float mr, int td) : theta_discretization(td), RangeMethod(m, mr) { 
 			#if _USE_CACHED_CONSTANTS
 			theta_discretization_div_M_2PI = theta_discretization / M_2PI;
@@ -2969,6 +1922,38 @@ namespace ranges {
 			}
 			return slice;
 		}
+
+		void serialize(std::string fn) {
+			std::ofstream myFile;
+			myFile.open (fn, std::ios::out | std::ios::binary);
+			cereal::BinaryOutputArchive archive( myFile );
+
+			RangeMethod::serialize(archive);
+
+			archive(theta_discretization);
+			archive(giant_lut);
+
+			myFile.close();
+		}
+		void deserialize(std::string fn) {
+			std::ifstream myFile;
+			myFile.open (fn, std::ios::in | std::ios::binary);
+			cereal::BinaryInputArchive archive( myFile );
+			
+			RangeMethod::deserialize(archive);
+			
+			archive(theta_discretization);
+			archive(giant_lut);
+
+			myFile.close();
+
+			#if _USE_CACHED_CONSTANTS
+			theta_discretization_div_M_2PI = theta_discretization / M_2PI;
+			M_2PI_div_theta_discretization = M_2PI / ((float) theta_discretization);
+			max_div_limits = max_range/std::numeric_limits<uint16_t>::max();
+			limits_div_max = std::numeric_limits<uint16_t>::max() / max_range;
+			#endif
+		}
 	protected:
 		int theta_discretization;
 		#if _USE_CACHED_CONSTANTS
@@ -2978,6 +1963,273 @@ namespace ranges {
 		float limits_div_max;
 		#endif
 		std::vector<std::vector<std::vector<lut_t> > > giant_lut;
+	};
+
+	class RayMarchingGPU : public RangeMethodGPU
+	{
+	public:
+		RayMarchingGPU() : RangeMethodGPU() {}
+		RayMarchingGPU(OMap m, float mr) : RangeMethodGPU(m, mr) { 
+			#if USE_CUDA == 1
+			distImage = new DistanceTransform(&m);
+			rmc = new RayMarchingCUDA(distImage->grid, distImage->width, distImage->height, max_range);
+
+			#if ROS_WORLD_TO_GRID_CONVERSION == 1
+			rmc->set_conversion_params(m.world_scale,m.world_angle,m.world_origin_x, m.world_origin_y, 
+				m.world_sin_angle, m.world_cos_angle);
+			#endif
+
+			#else
+			throw std::string("Must compile with -DWITH_CUDA=ON to use this class.");
+			#endif
+		}
+		~RayMarchingGPU() {
+			delete distImage;
+			#if USE_CUDA == 1
+			delete rmc;
+			#else
+			throw std::string("Must compile with -DWITH_CUDA=ON to use this class.");
+			#endif
+		};
+
+		// this is called by calc_range_many with a maximum of CHUNK_SIZE casts
+		void calc_range_chunk(float *ins, float *outs, int num_casts) {
+			rmc->calc_range_many(ins,outs,num_casts);
+		}
+
+		// wrapper function to call calc_range repeatedly with the given array of inputs
+		// and store the result to the given outputs. Useful for avoiding cython function
+		// call overhead by passing it a numpy array pointer. Indexing assumes a 3xn numpy array
+		// for the inputs and a 1xn numpy array of the outputs
+		void numpy_calc_range(float * ins, float * outs, int num_casts) {
+			#if USE_CUDA == 1
+			#if ROS_WORLD_TO_GRID_CONVERSION == 0
+			std::cout << "Cannot use GPU numpy_calc_range without ROS_WORLD_TO_GRID_CONVERSION == 1" << std::endl;
+			return;
+			#endif
+			maybe_warn(num_casts);
+			int iters = std::ceil((float)num_casts / (float)CHUNK_SIZE);
+			for (int i = 0; i < iters; ++i) {
+				int num_in_chunk = CHUNK_SIZE;
+				if (i == iters - 1) num_in_chunk = num_casts-i*CHUNK_SIZE;
+				rmc->numpy_calc_range(&ins[i*CHUNK_SIZE*3],&outs[i*CHUNK_SIZE],num_in_chunk);
+			}
+			#else
+			throw std::string("Must compile with -DWITH_CUDA=ON to use this class.");
+			#endif
+		}
+
+		void numpy_calc_range_angles(float * ins, float * angles, float * outs, int num_particles, int num_angles) {
+			#if USE_CUDA == 1
+			#if ROS_WORLD_TO_GRID_CONVERSION == 0
+			std::cout << "Cannot use GPU numpy_calc_range without ROS_WORLD_TO_GRID_CONVERSION == 1" << std::endl;
+			return;
+			#endif
+			
+			int particles_per_iter = std::ceil((float)CHUNK_SIZE / (float)num_angles);
+			int iters = std::ceil((float)num_particles / (float) particles_per_iter);
+			// must allways do the correct number of angles, can only split on the particles
+			for (int i = 0; i < iters; ++i) {
+				int num_in_chunk = particles_per_iter;
+				if (i == iters - 1) num_in_chunk = num_particles-i*particles_per_iter;
+				rmc->numpy_calc_range_angles(&ins[i*num_in_chunk*3], angles, &outs[i*num_in_chunk*num_angles],
+					num_in_chunk, num_angles);
+			}
+			#else
+			throw std::string("Must compile with -DWITH_CUDA=ON to use this class.");
+			#endif
+		}
+
+		#if SENSOR_MODEL_HELPERS == 1
+		#if USE_CUDA == 1
+		void set_sensor_model(double *table, int table_width) {
+			// convert the sensor model from a numpy array to a vector array
+			for (int i = 0; i < table_width; ++i)
+			{
+				std::vector<double> table_row;
+				for (int j = 0; j < table_width; ++j)
+					table_row.push_back(table[table_width*i + j]);
+				sensor_model.push_back(table_row);
+			}
+			rmc->set_sensor_table(table, table_width);
+		}
+		#endif
+		#endif
+
+		void serialize(std::string fn) {
+			std::ofstream myFile;
+			myFile.open (fn, std::ios::out | std::ios::binary);
+			cereal::BinaryOutputArchive archive( myFile );
+
+			RangeMethod::serialize(archive);
+			distImage->serialize(archive);
+			myFile.close();
+		}
+		void deserialize(std::string fn) {
+			#if USE_CUDA == 1
+			std::ifstream myFile;
+			myFile.open (fn, std::ios::in | std::ios::binary);
+			cereal::BinaryInputArchive archive( myFile );
+
+			RangeMethod::deserialize(archive);
+			distImage = new DistanceTransform();
+			distImage->deserialize(archive);
+			myFile.close();
+
+			rmc = new RayMarchingCUDA(distImage->grid, distImage->width, distImage->height, max_range);
+			#if ROS_WORLD_TO_GRID_CONVERSION == 1
+			rmc->set_conversion_params(map.world_scale,map.world_angle,map.world_origin_x, map.world_origin_y, 
+				map.world_sin_angle, map.world_cos_angle);
+			#endif
+
+			#else
+			throw std::string("Must compile with -DWITH_CUDA=ON to use this class.");
+			#endif
+		}
+	
+		int memory() { return distImage->memory(); }
+	protected:
+		DistanceTransform *distImage = 0;
+		#if USE_CUDA == 1
+		RayMarchingCUDA * rmc = 0;
+		#endif
+	};
+
+	class CDDTCastGPU : public RangeMethodGPU
+	{
+	public:
+		CDDTCastGPU() : RangeMethodGPU(), theta_discretization(0), has_flat_array(false) {}
+		CDDTCastGPU(OMap m, float mr, unsigned int td) : RangeMethodGPU(m, mr), theta_discretization(td), has_flat_array(false) {
+			#if USE_CUDA == 1
+			cpu_cddt = new CDDTCast(m, mr, td);
+			cddt_gpu = new CDDTCUDA(m.grid, m.width, m.height, max_range, theta_discretization);
+			flatten();
+			#else
+			throw std::string("Must compile with -DWITH_CUDA=ON to use this class.");
+			#endif
+		};
+		~CDDTCastGPU() {};
+ 
+		void serialize(std::string fn) {
+			cpu_cddt->serialize(fn);
+		}
+
+		void deserialize(std::string fn) {
+			cpu_cddt = new CDDTCast();
+			cpu_cddt->deserialize(fn);
+			theta_discretization = cpu_cddt->theta_discretization;
+			max_range = cpu_cddt->max_range;
+			cddt_gpu = new CDDTCUDA(cpu_cddt->map.grid, cpu_cddt->map.width, cpu_cddt->map.height, max_range, theta_discretization);
+			map = *cpu_cddt->getMap();
+			flatten();
+		}
+
+		// this function creates a flat array out of the 3D CDDT vector container for use
+		// on a GPU. It is not called in the init function so that it can be done either
+		// before or after pruning
+		void flatten() {
+			// free old array in case this function is called more than once
+			if (has_flat_array) {
+				free(compressed_lut_ptr);
+				free(compressed_lut_index);
+				free(lut_slice_widths);
+				free(lut_bin_widths);
+			}
+
+			int num_els = cpu_cddt->num_lut_elements();
+			compressed_lut_ptr = (float *) malloc(num_els*sizeof(float));
+			has_flat_array = true;
+
+			int ind = 0;
+			max_lut_width = 0;
+			// populate the compressed lut array
+			for (int a = 0; a < theta_discretization; ++a)
+			{
+				// find the largest size width
+				if (cpu_cddt->compressed_lut[a].size() > max_lut_width) 
+					max_lut_width = cpu_cddt->compressed_lut[a].size();
+				for (int i = 0; i < cpu_cddt->compressed_lut[a].size(); ++i)
+				{
+					std::copy(cpu_cddt->compressed_lut[a][i].begin(), 
+						cpu_cddt->compressed_lut[a][i].end(), 
+						&compressed_lut_ptr[ind]);
+					ind += cpu_cddt->compressed_lut[a][i].size();
+				}
+			}
+
+			#if FLAT_POINTER_INDEX == 1
+			// create pointer structure into the compressed lut array to help indexing
+			compressed_lut_index = (float **) malloc(max_lut_width*theta_discretization*sizeof(float*));
+			#else
+			compressed_lut_index = (unsigned int*) malloc(max_lut_width*theta_discretization*sizeof(unsigned int));
+			#endif
+
+			ind = 0;
+			// populate the compressed lut index
+			for (int a = 0; a < theta_discretization; ++a)
+			{
+				for (int i = 0; i < cpu_cddt->compressed_lut[a].size(); ++i)
+				{
+					#if FLAT_POINTER_INDEX == 1
+					compressed_lut_index[a*max_lut_width+i] = &compressed_lut_ptr[ind];
+					#else
+					compressed_lut_index[a*max_lut_width+i] = ind;
+					#endif
+					ind += cpu_cddt->compressed_lut[a][i].size();
+				}
+				// fill the rest with zeros to avoid weirdness
+				for (int i = cpu_cddt->compressed_lut[a].size(); i < max_lut_width; ++i)
+				{
+					#if FLAT_POINTER_INDEX == 1
+					compressed_lut_index[a*max_lut_width+i] = compressed_lut_ptr;
+					#else
+					compressed_lut_index[a*max_lut_width+i] = 0;
+					#endif
+				}
+			}
+
+			lut_slice_widths = (unsigned short*) malloc(theta_discretization*sizeof(unsigned short));
+			lut_bin_widths = (unsigned short*) malloc(max_lut_width*theta_discretization*sizeof(unsigned short));
+			// populate the arrays which provide size information
+			for (int a = 0; a < theta_discretization; ++a)
+			{
+				lut_slice_widths[a] = cpu_cddt->compressed_lut[a].size();
+				for (int i = 0; i < cpu_cddt->compressed_lut[a].size(); ++i) {
+					lut_bin_widths[a*max_lut_width+i] = cpu_cddt->compressed_lut[a][i].size();
+				}
+			}
+			cddt_gpu->init_buffers(compressed_lut_ptr, compressed_lut_index, lut_slice_widths, lut_bin_widths, num_els, max_lut_width, &cpu_cddt->lut_translations[0]);
+			std::cout << "done flattening:" << max_lut_width << " " << sizeof(float*) << " " << sizeof(unsigned int) << std::endl;
+		}
+
+		void prune(float max_range) { 
+			cpu_cddt->prune(max_range); 
+			flatten();
+		}
+
+		void calc_range_chunk(float *ins, float *outs, int num_casts) {
+			cddt_gpu->calc_range_many(ins, outs, num_casts);
+		}
+	protected:
+		CDDTCast *cpu_cddt = 0;
+		unsigned int theta_discretization;
+
+		unsigned int max_lut_width;
+		bool has_flat_array;
+		float *compressed_lut_ptr;
+		// this is indexed by angle and offset
+		unsigned short *lut_bin_widths;
+		// this is indexed by angle
+		unsigned short *lut_slice_widths;
+		#if FLAT_POINTER_INDEX == 1
+		float **compressed_lut_index;
+		#else
+		unsigned int *compressed_lut_index;
+		#endif
+
+		#if USE_CUDA == 1
+		CDDTCUDA * cddt_gpu = 0;
+		#endif
 	};
 } 
 

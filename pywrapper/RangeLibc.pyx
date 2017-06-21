@@ -83,13 +83,18 @@ cdef extern from "includes/RangeLib.h" namespace "ranges":
         RayMarchingGPU(OMap m, float mr)
         # this one does not do coordinate space conversion
         void calc_range_many(float * ins, float * outs, int num_casts)
-        # these do
         void numpy_calc_range(float * ins, float * outs, int num_casts)
         void numpy_calc_range_angles(float * ins, float * angles, float * outs, int num_casts, int num_angles)
         void eval_sensor_model(float * obs, float * ranges, double * outs, int rays_per_particle, int particles)
         void set_sensor_model(double * table, int width)
-        # void numpy_calc_range_angles(float * ins, float * angles, float * outs, int num_casts, int num_angles)
-        void calc_range_repeat_angles_eval_sensor_model(float * ins, float * angles, float * obs, double * weights, int num_particles, int num_angles)
+    # cdef cppclass RayMarchingGPU:
+    #     RayMarchingGPU(OMap m, float mr)
+    #     # this one does not do coordinate space conversion
+    #     void calc_range_many(float * ins, float * outs, int num_casts)
+    #     void numpy_calc_range(float * ins, float * outs, int num_casts)
+    #     void numpy_calc_range_angles(float * ins, float * angles, float * outs, int num_casts, int num_angles)
+    #     void eval_sensor_model(float * obs, float * ranges, double * outs, int rays_per_particle, int particles)
+    #     void set_sensor_model(double * table, int width)
 
 # define flags
 USE_CACHED_TRIG = _USE_CACHED_TRIG

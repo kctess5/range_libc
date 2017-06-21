@@ -1,6 +1,4 @@
 #include "includes/CudaRangeLib.h"
-// #include "includes/RangeUtils.h"
-
 
 #include <cuda.h>
 #include <string>
@@ -190,9 +188,6 @@ __global__ void cuda_eval_sensor_table(float * obs, float * ranges, double * out
 }
 
 
-
-
-
 #ifndef M_2PI
 #define M_2PI 6.28318530718
 #endif
@@ -204,15 +199,9 @@ __global__ void cuda_eval_sensor_table(float * obs, float * ranges, double * out
 #define CONST_MEMORY_SIZE 2048
 __constant__ unsigned short constData[CONST_MEMORY_SIZE];
 
-// store:
-// 	- d_lut_slice_widths : int
-
 __device__ bool is_occupied(int x, int y, const bool *d_map, int height) {
 	return d_map[x * height + y];
 }
-
-
-
 
 #if USE_CONST_ANNOTATIONS == 1
 __global__ void cuda_cddt(
@@ -350,8 +339,6 @@ __global__ void cuda_cddt(
 		// the query point is on top of a occupied pixel
 		// this call is here rather than at the beginning, because it is apparently more efficient.
 		// I presume that this has to do with the previous two return statements
-		// if (map.grid[x][y]) { return 0.0; }
-		// if (d_map[x * height + y]) {
 		if (is_occupied(x, y, d_map, height)) {
 			outs[ind] = 0.0;
 			return;
@@ -378,23 +365,6 @@ __global__ void cuda_cddt(
 	// return the distance to the neighbor
 	outs[ind] = -1.0;
 }
-
-
-
-
-
-// this should be optimized to use shared memory, otherwise the random read performance is not great
-// __global__ void cuda_accumulate_weights(float * obs, float * ranges, double * outs, double * sensorTable, int rays_per_particle, int particles, float inv_world_scale, int max_range) {
-// 	int ind = blockIdx.x*blockDim.x + threadIdx.x;
-// 	if (ind >= particles) return;
-
-// 	double weight = 1.0;
-// 	for (int i = 0; i < rays_per_particle; ++i)
-// 	{
-// 		weight *= outs[ind*rays_per_particle+i];
-		
-// 	}
-// }
 
 void err_check() {
 	cudaError_t err = cudaGetLastError();
@@ -478,41 +448,41 @@ void RayMarchingCUDA::numpy_calc_range_angles(float * ins, float * angles, float
 	#endif
 }
 
-void RayMarchingCUDA::calc_range_repeat_angles_eval_sensor_model(float * ins, float * angles, float * obs, double * weights, int num_particles, int num_angles) {
-	#if ROS_WORLD_TO_GRID_CONVERSION == 1
-	std::cout << "Do not use calc_range_repeat_angles_eval_sensor_model for GPU, unimplemented" << std::endl;
-	std::cout << "Instead use numpy_calc_range_angles followed by a standard sensor evaluation method." << std::endl;
-	// if (!allocated_weights) {
-	// 	cudaMalloc((void **)&d_weights, num_particles*num_angles*sizeof(double));
-	// 	allocated_weights = true;
-	// }
-	// // copy queries to GPU buffer
-	// cudaMemcpy(d_ins, ins, sizeof(float) * num_particles * 3,cudaMemcpyHostToDevice);
-	// // also copy angles to end of GPU buffer, this assumes there is enough space (which there should be)
-	// cudaMemcpy(&d_ins[num_particles * 3], angles, sizeof(float) * num_angles,cudaMemcpyHostToDevice);
+// void RayMarchingCUDA::calc_range_repeat_angles_eval_sensor_model(float * ins, float * angles, float * obs, double * weights, int num_particles, int num_angles) {
+// 	#if ROS_WORLD_TO_GRID_CONVERSION == 1
+// 	std::cout << "Do not use calc_range_repeat_angles_eval_sensor_model for GPU, unimplemented" << std::endl;
+// 	std::cout << "Instead use numpy_calc_range_angles followed by a standard sensor evaluation method." << std::endl;
+// 	// if (!allocated_weights) {
+// 	// 	cudaMalloc((void **)&d_weights, num_particles*num_angles*sizeof(double));
+// 	// 	allocated_weights = true;
+// 	// }
+// 	// // copy queries to GPU buffer
+// 	// cudaMemcpy(d_ins, ins, sizeof(float) * num_particles * 3,cudaMemcpyHostToDevice);
+// 	// // also copy angles to end of GPU buffer, this assumes there is enough space (which there should be)
+// 	// cudaMemcpy(&d_ins[num_particles * 3], angles, sizeof(float) * num_angles,cudaMemcpyHostToDevice);
 
-	// // execute queries on the GPU, have to pass coordinate space conversion constants
-	// cuda_ray_marching_angles_world_to_grid<<< CHUNK_SIZE / NUM_THREADS, NUM_THREADS >>>(d_ins,d_outs, d_distMap, 
-	// 	width, height, max_range, num_particles, num_angles, world_origin_x, world_origin_y, 
-	// 	world_scale, inv_world_scale, world_sin_angle, world_cos_angle, rotation_const);
+// 	// // execute queries on the GPU, have to pass coordinate space conversion constants
+// 	// cuda_ray_marching_angles_world_to_grid<<< CHUNK_SIZE / NUM_THREADS, NUM_THREADS >>>(d_ins,d_outs, d_distMap, 
+// 	// 	width, height, max_range, num_particles, num_angles, world_origin_x, world_origin_y, 
+// 	// 	world_scale, inv_world_scale, world_sin_angle, world_cos_angle, rotation_const);
 
-	// cudaMemcpy(d_ins, obs, sizeof(float) * num_angles,cudaMemcpyHostToDevice);
+// 	// cudaMemcpy(d_ins, obs, sizeof(float) * num_angles,cudaMemcpyHostToDevice);
 
-	// // read from sensor table
-	// cuda_eval_sensor_table<<< CHUNK_SIZE / NUM_THREADS, NUM_THREADS >>>(d_ins, d_outs, d_weights, d_sensorTable, num_angles, num_particles, inv_world_scale, table_width);
+// 	// // read from sensor table
+// 	// cuda_eval_sensor_table<<< CHUNK_SIZE / NUM_THREADS, NUM_THREADS >>>(d_ins, d_outs, d_weights, d_sensorTable, num_angles, num_particles, inv_world_scale, table_width);
 
-	// cuda_eval_sensor_table<<< CHUNK_SIZE / NUM_THREADS, NUM_THREADS >>>(d_ins, d_outs, d_weights, d_sensorTable, num_angles, num_particles, inv_world_scale, table_width);
-	// // cuda_eval_sensor_table(angles, d_sensorTable)
-	// // multiplicatively accumulate weights on the GPU
+// 	// cuda_eval_sensor_table<<< CHUNK_SIZE / NUM_THREADS, NUM_THREADS >>>(d_ins, d_outs, d_weights, d_sensorTable, num_angles, num_particles, inv_world_scale, table_width);
+// 	// // cuda_eval_sensor_table(angles, d_sensorTable)
+// 	// // multiplicatively accumulate weights on the GPU
 	
 
-	// // copy weights back to CPU
-	// cudaMemcpy(weights,d_weights,sizeof(double)*num_particles,cudaMemcpyDeviceToHost);
-	// cudaDeviceSynchronize();
-	#else
-	std::cout << "GPU numpy_calc_range_angles only works with ROS world to grid conversion enabled" << std::endl;
-	#endif
-}
+// 	// // copy weights back to CPU
+// 	// cudaMemcpy(weights,d_weights,sizeof(double)*num_particles,cudaMemcpyDeviceToHost);
+// 	// cudaDeviceSynchronize();
+// 	#else
+// 	std::cout << "GPU numpy_calc_range_angles only works with ROS world to grid conversion enabled" << std::endl;
+// 	#endif
+// }
 
 
 

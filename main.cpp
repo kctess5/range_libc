@@ -42,12 +42,9 @@ DEFINE_string(query, "",
 	"Query point x,y,theta to ray cast from. example: --query=0,0,3.14");
 
 DEFINE_string(trace_path, "", "Path to output trace map of memory access pattern. Works for Bresenham's Line or Ray Marching.");
-
 DEFINE_string(lut_slice_path, "", "Path to output a slice of the LUT.");
 DEFINE_string(lut_slice_theta, "1.57", "Which LUT slice to output");
-
 DEFINE_string(serialize_path, "", "Path to output a serialized data structure.");
-
 
 #define MAX_DISTANCE 500
 #define THETA_DISC 108
@@ -63,8 +60,6 @@ DEFINE_string(serialize_path, "", "Path to output a serialized data structure.")
 #define GRID_RAYS 40
 #define GRID_SAMPLES 1
 #define RANDOM_SAMPLES 200000
-// #define RANDOM_SAMPLES (CHUNK_SIZE*2)
-// #define RANDOM_SAMPLES (CHUNK_SIZE*10)
 
 using namespace ranges;
 using namespace benchmark;
@@ -81,6 +76,27 @@ void save_log(std::stringstream &log, std::string path) {
 	save_log(log,path.c_str());
 }
 
+template <class CAST_T>
+CAST_T construct_continuous_method(OMap map, float max_dist, std::string map_path, bool serialized_input) {
+	if (serialized_input) {
+		CAST_T march;
+		march.deserialize(map_path);
+		return march;
+	} else {
+		return CAST_T(map, max_dist);
+	}
+}
+
+template <class CAST_T>
+CAST_T construct_discrete_method(OMap map, float max_dist, int theta_disc, std::string map_path, bool serialized_input) {
+	if (serialized_input) {
+		CAST_T rc;
+		rc.deserialize(map_path);
+		return rc;
+	} else {
+		return CAST_T(map, max_dist, theta_disc);
+	}
+}
 
 int main(int argc, char *argv[]) {
 	// set usage message
@@ -95,21 +111,16 @@ int main(int argc, char *argv[]) {
 	std::cout << "MAP NAME: " << map_name << std::endl;
 	std::vector<std::string> map_name_parts = utils::split(map_name, '.');
 	bool SERIALIZED_INPUT = (map_name_parts[map_name_parts.size()-1] == "serialized");
-	if (SERIALIZED_INPUT) std::cout << "SERIALIZED_INPUT" << std::endl;
 
 	std::cout << "Running RangeLib benchmarks" << std::endl;
 	OMap map = OMap(1,1);
 
 	if (SERIALIZED_INPUT) {
-		std::cout << "SERIALIZED" << std::endl;
+		// std::cout << "SERIALIZED" << std::endl;
 	} else if (FLAGS_map_path == "BASEMENT_MAP") {
 		#ifdef BASEPATH
 		std::cout << "...Loading map" << std::endl;
 		map = OMap(QUOTE(BASEPATH) "/maps/basement_hallways_5cm.png");
-		// #pragma GCC diagnostic push
-		// #pragma GCC diagnostic ignored "-Wunused-result"
-		// (volatile void) chdir(BASEPATH);
-		// #pragma GCC diagnostic pop
 		#else
 		std::cout << "BASEPATH not defined, map paths may not resolve correctly." << std::endl;
 		#endif		
@@ -194,14 +205,9 @@ int main(int argc, char *argv[]) {
 	if (utils::has(utils::RM, methods)) {
 		std::cout << "\n...Loading range method: RayMarching" << std::endl;
 		auto construction_start = std::chrono::high_resolution_clock::now();
-
-		RayMarching rm = RayMarching();
-		if (SERIALIZED_INPUT) {
-			rm.deserialize(FLAGS_map_path);
-		} else {
-			rm = RayMarching(map, MAX_DISTANCE);
-		}
-
+		
+		RayMarching rm = construct_continuous_method<RayMarching>(map, MAX_DISTANCE, FLAGS_map_path, SERIALIZED_INPUT);
+		
 		auto construction_end = std::chrono::high_resolution_clock::now();
 		std::chrono::duration<double> construction_dur = 
 			std::chrono::duration_cast<std::chrono::duration<double>>(construction_end - construction_start);
@@ -213,7 +219,6 @@ int main(int argc, char *argv[]) {
 
 		if (DO_SERIALIZE) {
 			rm.serialize(FLAGS_serialize_path + map_name + ".rm.serialized");
-			rm.deserialize(FLAGS_serialize_path + map_name + ".rm.serialized");
 		}
 
 		if (DO_LOG) {
@@ -249,7 +254,10 @@ int main(int argc, char *argv[]) {
 
 	if (utils::has(utils::CDDT, methods) || utils::has(utils::PCDDT, methods)) {
 		auto construction_start = std::chrono::high_resolution_clock::now();
-		CDDTCast rc = CDDTCast(map, MAX_DISTANCE, THETA_DISC);
+
+		CDDTCast rc = construct_discrete_method<CDDTCast>(map, MAX_DISTANCE, THETA_DISC, FLAGS_map_path, SERIALIZED_INPUT);
+
+		// CDDTCast rc = CDDTCast(map, MAX_DISTANCE, THETA_DISC);
 		auto construction_end = std::chrono::high_resolution_clock::now();
 		std::chrono::duration<double> construction_dur = 
 			std::chrono::duration_cast<std::chrono::duration<double>>(construction_end - construction_start);
@@ -266,8 +274,11 @@ int main(int argc, char *argv[]) {
 				mark.set_log(&tlog);
 				summary << "cddt," << construction_dur.count() << "," << rc.memory() << std::endl;
 			}
-			if (FLAGS_which_benchmark == "grid")
+			if (FLAGS_which_benchmark == "grid") {
 				mark.grid_sample2(GRID_STEP, GRID_RAYS, GRID_SAMPLES);
+				mark.grid_sample2(GRID_STEP, GRID_RAYS, GRID_SAMPLES);
+			}
+				
 			else if (FLAGS_which_benchmark == "random")
 				mark.random_sample(RANDOM_SAMPLES);
 			if (DO_LOG) {
@@ -303,6 +314,10 @@ int main(int argc, char *argv[]) {
 			}
 		}
 
+		if (DO_SERIALIZE) {
+			rc.serialize(FLAGS_serialize_path + map_name + ".cddt.serialized");
+		}
+
 		if (!FLAGS_cddt_save_path.empty()) {\
 			std::cout << "...saving CDDT to:" << FLAGS_cddt_save_path<< std::endl;
 			std::stringstream cddt_serialized;
@@ -311,81 +326,20 @@ int main(int argc, char *argv[]) {
 		}
 	}
 
-	if (utils::has(utils::CDDT2, methods) || utils::has(utils::PCDDT2, methods)) {
-		auto construction_start = std::chrono::high_resolution_clock::now();
-		CDDTCast2 rc = CDDTCast2(map, MAX_DISTANCE, THETA_DISC);
-		auto construction_end = std::chrono::high_resolution_clock::now();
-		std::chrono::duration<double> construction_dur = 
-			std::chrono::duration_cast<std::chrono::duration<double>>(construction_end - construction_start);
-
-		double const_dur = 0;
-		if (utils::has(utils::CDDT2, methods)) {
-			std::cout << "\n...Loading range method: CDDTCast2" << std::endl;
-			std::cout << "...construction time: " << construction_dur.count() << std::endl;
-			std::cout << "...lut size (MB): " << rc.memory() / MB << std::endl;
-			rc.flatten();
-			Benchmark<CDDTCast2> mark = Benchmark<CDDTCast2>(rc);
-			std::cout << "...Running grid benchmark" << std::endl;
-			if (DO_LOG) {
-				tlog.str("");
-				mark.set_log(&tlog);
-				summary << "cddt2," << construction_dur.count() << "," << rc.memory() << std::endl;
-			}
-			if (FLAGS_which_benchmark == "grid")
-				mark.grid_sample2(GRID_STEP, GRID_RAYS, GRID_SAMPLES);
-			else if (FLAGS_which_benchmark == "random")
-				mark.random_sample(RANDOM_SAMPLES);
-			if (DO_LOG) {
-				save_log(tlog, FLAGS_log_path+"/cddt2.csv");
-			}
-		}
-
-		if (utils::has(utils::PCDDT2, methods)) {
-			std::cout << "\n...Loading range method: PrunedCDDTCast2" << std::endl;
-			
-
-			auto prune_start = std::chrono::high_resolution_clock::now();
-			rc.prune(MAX_DISTANCE);
-			auto prune_end = std::chrono::high_resolution_clock::now();
-			std::chrono::duration<double> prune_dur = 
-				std::chrono::duration_cast<std::chrono::duration<double>>(prune_end - prune_start);
-
-
-			std::cout << "...pruned lut size (MB): " << rc.memory() / MB << std::endl;
-			Benchmark<CDDTCast2> mark = Benchmark<CDDTCast2>(rc);
-			std::cout << "...Running grid benchmark" << std::endl;
-			if (DO_LOG) {
-				tlog.str("");
-				mark.set_log(&tlog);
-				summary << "pcddt2," << construction_dur.count() + prune_dur.count() << "," << rc.memory() << std::endl;
-			}
-			if (FLAGS_which_benchmark == "grid")
-				mark.grid_sample2(GRID_STEP, GRID_RAYS, GRID_SAMPLES);
-			else if (FLAGS_which_benchmark == "random")
-				mark.random_sample(RANDOM_SAMPLES);
-			if (DO_LOG) {
-				save_log(tlog, FLAGS_log_path+"/pcddt2.csv");
-			}
-		}
-
-		// if (!FLAGS_cddt_save_path.empty()) {\
-		// 	std::cout << "...saving CDDT2 to:" << FLAGS_cddt_save_path<< std::endl;
-		// 	std::stringstream cddt_serialized;
-		// 	rc.serializeJson(&cddt_serialized);
-		// 	save_log(cddt_serialized, FLAGS_cddt_save_path.c_str());
-		// }
-	}
-
 	if (utils::has(utils::GLT, methods)) {
 		std::cout << "\n...Loading range method: GiantLUTCast" << std::endl;
-		
-
 		auto construction_start = std::chrono::high_resolution_clock::now();
-		GiantLUTCast glt = GiantLUTCast(map, MAX_DISTANCE, THETA_DISC);
+
+		GiantLUTCast glt = construct_discrete_method<GiantLUTCast>(map, MAX_DISTANCE, THETA_DISC, FLAGS_map_path, SERIALIZED_INPUT);
+
+		// GiantLUTCast glt = GiantLUTCast(map, MAX_DISTANCE, THETA_DISC);
 		auto construction_end = std::chrono::high_resolution_clock::now();
 		std::chrono::duration<double> construction_dur = 
 			std::chrono::duration_cast<std::chrono::duration<double>>(construction_end - construction_start);
 
+		if (DO_SERIALIZE) {
+			glt.serialize(FLAGS_serialize_path + map_name + ".glt.serialized");
+		}
 
 		Benchmark<GiantLUTCast> mark = Benchmark<GiantLUTCast>(glt);
 		std::cout << "...lut size (MB): " << glt.memory() / MB << std::endl;
@@ -415,19 +369,24 @@ int main(int argc, char *argv[]) {
 		#if USE_CUDA == 1
 		std::cout << "\n...Loading range method: RayMarchingGPU" << std::endl;
 		auto construction_start = std::chrono::high_resolution_clock::now();
-		RayMarchingGPU rmgpu = RayMarchingGPU(map, MAX_DISTANCE);
+
+		RayMarchingGPU rmgpu = construct_continuous_method<RayMarchingGPU>(map, MAX_DISTANCE, FLAGS_map_path, SERIALIZED_INPUT);
+
+		int width = rmgpu.getMap()->width;
+		int height = rmgpu.getMap()->height;
+
 		auto construction_end = std::chrono::high_resolution_clock::now();
 		std::chrono::duration<double> construction_dur = 
 			std::chrono::duration_cast<std::chrono::duration<double>>(construction_end - construction_start);
 		std::cout << "...construction time: " << construction_dur.count() << std::endl;
 
 		if (FLAGS_which_benchmark == "grid") {
-			int num_samples = Benchmark<RayMarching>::num_grid_samples(GRID_STEP, GRID_RAYS, GRID_SAMPLES, map.width, map.height);
+			int num_samples = Benchmark<RayMarching>::num_grid_samples(GRID_STEP, GRID_RAYS, GRID_SAMPLES, width, height);
 			float *samples = new float[num_samples*3];
 			float *outs = new float[num_samples];
 			
 
-			Benchmark<RayMarching>::get_grid_samples(samples, GRID_STEP, GRID_RAYS, GRID_SAMPLES, map.width, map.height);
+			Benchmark<RayMarching>::get_grid_samples(samples, GRID_STEP, GRID_RAYS, GRID_SAMPLES, width, height);
 			// warmup
 			rmgpu.calc_range_many(samples, outs, num_samples);
 
@@ -450,12 +409,12 @@ int main(int argc, char *argv[]) {
 			float *outs = new float[RANDOM_SAMPLES];
 			
 			// warm up
-			Benchmark<RayMarching>::get_random_samples(samples, RANDOM_SAMPLES, map.width, map.height);
+			Benchmark<RayMarching>::get_random_samples(samples, RANDOM_SAMPLES, width, height);
 			rmgpu.calc_range_many(samples, outs, RANDOM_SAMPLES);
-			Benchmark<RayMarching>::get_random_samples(samples, RANDOM_SAMPLES, map.width, map.height);
+			Benchmark<RayMarching>::get_random_samples(samples, RANDOM_SAMPLES, width, height);
 			rmgpu.calc_range_many(samples, outs, RANDOM_SAMPLES);
 			
-			Benchmark<RayMarching>::get_random_samples(samples, RANDOM_SAMPLES, map.width, map.height);
+			Benchmark<RayMarching>::get_random_samples(samples, RANDOM_SAMPLES, width, height);
 			auto mark_start = std::chrono::high_resolution_clock::now();
 			rmgpu.calc_range_many(samples, outs, RANDOM_SAMPLES);
 			auto mark_end = std::chrono::high_resolution_clock::now();
@@ -484,7 +443,12 @@ int main(int argc, char *argv[]) {
 		#if USE_CUDA == 1
 		std::cout << "\n...Loading range method: CDDTCastGPU" << std::endl;
 		auto construction_start = std::chrono::high_resolution_clock::now();
-		CDDTCastGPU cddtgpu = CDDTCastGPU(map, MAX_DISTANCE, THETA_DISC);
+
+		CDDTCastGPU cddtgpu = construct_discrete_method<CDDTCastGPU>(map, MAX_DISTANCE, THETA_DISC, FLAGS_map_path, SERIALIZED_INPUT);
+
+		int width = cddtgpu.getMap()->width;
+		int height = cddtgpu.getMap()->height;
+
 		auto construction_end = std::chrono::high_resolution_clock::now();
 		std::chrono::duration<double> construction_dur = 
 			std::chrono::duration_cast<std::chrono::duration<double>>(construction_end - construction_start);
@@ -496,12 +460,11 @@ int main(int argc, char *argv[]) {
 		}
 
 		if (FLAGS_which_benchmark == "grid") {
-			int num_samples = Benchmark<RayMarching>::num_grid_samples(GRID_STEP, GRID_RAYS, GRID_SAMPLES, map.width, map.height);
+			int num_samples = Benchmark<RayMarching>::num_grid_samples(GRID_STEP, GRID_RAYS, GRID_SAMPLES, width, height);
 			float *samples = new float[num_samples*3];
 			float *outs = new float[num_samples];
 			
-
-			Benchmark<RayMarching>::get_grid_samples(samples, GRID_STEP, GRID_RAYS, GRID_SAMPLES, map.width, map.height);
+			Benchmark<RayMarching>::get_grid_samples(samples, GRID_STEP, GRID_RAYS, GRID_SAMPLES, width, height);
 			// warmup
 			cddtgpu.calc_range_many(samples, outs, num_samples);
 
@@ -524,12 +487,12 @@ int main(int argc, char *argv[]) {
 			float *outs = new float[RANDOM_SAMPLES];
 			
 			// warm up
-			Benchmark<RayMarching>::get_random_samples(samples, RANDOM_SAMPLES, map.width, map.height);
+			Benchmark<RayMarching>::get_random_samples(samples, RANDOM_SAMPLES, width, height);
 			cddtgpu.calc_range_many(samples, outs, RANDOM_SAMPLES);
-			Benchmark<RayMarching>::get_random_samples(samples, RANDOM_SAMPLES, map.width, map.height);
+			Benchmark<RayMarching>::get_random_samples(samples, RANDOM_SAMPLES, width, height);
 			cddtgpu.calc_range_many(samples, outs, RANDOM_SAMPLES);
 			
-			Benchmark<RayMarching>::get_random_samples(samples, RANDOM_SAMPLES, map.width, map.height);
+			Benchmark<RayMarching>::get_random_samples(samples, RANDOM_SAMPLES, width, height);
 			auto mark_start = std::chrono::high_resolution_clock::now();
 			cddtgpu.calc_range_many(samples, outs, RANDOM_SAMPLES);
 			auto mark_end = std::chrono::high_resolution_clock::now();
