@@ -91,15 +91,22 @@ def locate_cuda():
 ##################### Configuration ############################
 
 
+compute_capability = "53"
 # compiler_flags = ["-w","-std=c++11", "-march=native", "-ffast-math", "-fno-math-errno"]
 compiler_flags = ["-w","-std=c++11", "-march=native", "-ffast-math", "-fno-math-errno", "-O3"]
-nvcc_flags = ['-arch=sm_20', '--ptxas-options=-v', '-c', '--compiler-options', "'-fPIC'", "-w","-std=c++11"]
-include_dirs = ["../", numpy_include]
+nvcc_flags = [ '--use_fast_math', '-O3', '-arch=compute_'+compute_capability, '-code=sm_'+compute_capability, '--ptxas-options=-v', '-c', '--compiler-options', "'-fPIC'", "-w","-std=c++11"]
+include_dirs = ["../", numpy_include, "../vendor/cereal-1.2.2/include"]
 depends = ["../includes/*.h"]
 sources = ["RangeLibc.pyx","../vendor/lodepng/lodepng.cpp"]
 
-CHUNK_SIZE = "262144"
-NUM_THREADS = "256"
+
+# CHUNK_SIZE = "65536"
+
+CHUNK_SIZE = "524288"
+NUM_THREADS = "512"
+
+# CHUNK_SIZE = "262144"
+# NUM_THREADS = "256"
 
 if use_cuda:
     compiler_flags.append("-DUSE_CUDA=1");        nvcc_flags.append("-DUSE_CUDA=1")
@@ -182,7 +189,7 @@ else:
 				extra_compile_args = compiler_flags,
 				extra_link_args = ["-std=c++11"],
 				include_dirs = include_dirs,
-				depends=["../includes/*.h"],
+				depends=depends,
 				language="c++",)],
 		name='range_libc',
 		author='Corey Walsh',

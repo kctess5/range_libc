@@ -17,8 +17,6 @@ cdef extern from "includes/RangeLib.h":
     cdef bool _USE_CACHED_CONSTANTS "_USE_CACHED_CONSTANTS"
     cdef bool _USE_FAST_ROUND "_USE_FAST_ROUND"
     cdef bool _NO_INLINE "_NO_INLINE"
-    cdef bool _USE_LRU_CACHE "_USE_LRU_CACHE"
-    cdef int  _LRU_CACHE_SIZE "_LRU_CACHE_SIZE"
     cdef bool _MAKE_TRACE_MAP "_MAKE_TRACE_MAP"
     cdef bool USE_CUDA "USE_CUDA"
 
@@ -87,6 +85,18 @@ cdef extern from "includes/RangeLib.h" namespace "ranges":
         void numpy_calc_range_angles(float * ins, float * angles, float * outs, int num_casts, int num_angles)
         void eval_sensor_model(float * obs, float * ranges, double * outs, int rays_per_particle, int particles)
         void set_sensor_model(double * table, int width)
+
+    cdef cppclass CDDTCastGPU:
+        CDDTCastGPU(OMap m, float mr, unsigned int td)
+        void prune(float max_range)
+        # this one does not do coordinate space conversion
+        void calc_range_many(float * ins, float * outs, int num_casts)
+        # void numpy_calc_range(float * ins, float * outs, int num_casts)
+        void numpy_calc_range_angles(float * ins, float * angles, float * outs, int num_casts, int num_angles)
+
+        void eval_sensor_model(float * obs, float * ranges, double * outs, int rays_per_particle, int particles)
+        void set_sensor_model(double * table, int width)
+
     # cdef cppclass RayMarchingGPU:
     #     RayMarchingGPU(OMap m, float mr)
     #     # this one does not do coordinate space conversion
@@ -102,8 +112,6 @@ USE_ALTERNATE_MOD = _USE_ALTERNATE_MOD
 USE_CACHED_CONSTANTS = _USE_CACHED_CONSTANTS
 USE_FAST_ROUND = _USE_FAST_ROUND
 NO_INLINE = _NO_INLINE
-USE_LRU_CACHE = _USE_LRU_CACHE
-LRU_CACHE_SIZE = _LRU_CACHE_SIZE
 SHOULD_USE_CUDA = USE_CUDA
 
 '''
@@ -333,11 +341,46 @@ cdef class PyRayMarchingGPU:
     cpdef void calc_range_repeat_angles(self,np.ndarray[float, ndim=2, mode="c"] ins,np.ndarray[float, ndim=1, mode="c"] angles, np.ndarray[float, ndim=1, mode="c"] outs):
         self.thisptr.numpy_calc_range_angles(&ins[0,0], &angles[0], &outs[0], ins.shape[0], angles.shape[0])
 
-    cpdef void calc_range_repeat_angles_eval_sensor_model(self,np.ndarray[float, ndim=2, mode="c"] ins,np.ndarray[float, ndim=1, mode="c"] angles, np.ndarray[float, ndim=1, mode="c"] obs, np.ndarray[double, ndim=1, mode="c"] weights):
-        self.thisptr.calc_range_repeat_angles_eval_sensor_model(&ins[0,0], &angles[0], &obs[0],  &weights[0], ins.shape[0], angles.shape[0])
+    # cpdef void calc_range_repeat_angles_eval_sensor_model(self,np.ndarray[float, ndim=2, mode="c"] ins,np.ndarray[float, ndim=1, mode="c"] angles, np.ndarray[float, ndim=1, mode="c"] obs, np.ndarray[double, ndim=1, mode="c"] weights):
+    #     self.thisptr.calc_range_repeat_angles_eval_sensor_model(&ins[0,0], &angles[0], &obs[0],  &weights[0], ins.shape[0], angles.shape[0])
     
     cpdef void eval_sensor_model(self, np.ndarray[float, ndim=1, mode="c"] observation, np.ndarray[float, ndim=1, mode="c"] ranges, np.ndarray[double, ndim=1, mode="c"] outs, int num_rays, int num_particles):
         self.thisptr.eval_sensor_model(&observation[0],&ranges[0], &outs[0], num_rays, num_particles)
+    cpdef void set_sensor_model(self, np.ndarray[double, ndim=2, mode="c"] table):
+        if not table.shape[0] == table.shape[1]:
+            print "Sensor model must have equal matrix dimensions, failing!"
+            return
+        self.thisptr.set_sensor_model(&table[0,0], table.shape[0])
+
+cdef class PyCDDTGPU:
+    cdef CDDTCastGPU *thisptr      # hold a C++ instance which we're wrapping
+    cdef float max_range
+    def __cinit__(self, PyOMap Map, float max_range, unsigned int theta_disc):
+        if SHOULD_USE_CUDA == False:
+            print "CANNOT USE CDDTCastGPU - must compile RangeLib with USE_CUDA=1"
+            return
+        self.max_range = max_range
+        self.thisptr = new CDDTCastGPU(deref(Map.thisptr), max_range, theta_disc)
+    def __dealloc__(self):
+        del self.thisptr
+    cpdef void prune(self, float max_range=-1.0):
+        if max_range < 0.0:
+            self.thisptr.prune(self.max_range)
+        else:
+            self.thisptr.prune(max_range)
+
+    # cpdef void calc_range_many(self,np.ndarray[float, ndim=2, mode="c"] ins, np.ndarray[float, ndim=1, mode="c"] outs):
+    #     self.thisptr.numpy_calc_range(&ins[0,0], &outs[0], outs.shape[0])
+
+    cpdef void calc_range_repeat_angles(self,np.ndarray[float, ndim=2, mode="c"] ins,np.ndarray[float, ndim=1, mode="c"] angles, np.ndarray[float, ndim=1, mode="c"] outs):
+        self.thisptr.numpy_calc_range_angles(&ins[0,0], &angles[0], &outs[0], ins.shape[0], angles.shape[0])
+
+    # cpdef void calc_range_repeat_angles_eval_sensor_model(self,np.ndarray[float, ndim=2, mode="c"] ins,np.ndarray[float, ndim=1, mode="c"] angles, np.ndarray[float, ndim=1, mode="c"] obs, np.ndarray[double, ndim=1, mode="c"] weights):
+    #     self.thisptr.calc_range_repeat_angles_eval_sensor_model(&ins[0,0], &angles[0], &obs[0],  &weights[0], ins.shape[0], angles.shape[0])
+    
+    cpdef void eval_sensor_model(self, np.ndarray[float, ndim=1, mode="c"] observation, np.ndarray[float, ndim=1, mode="c"] ranges, np.ndarray[double, ndim=1, mode="c"] outs, int num_rays, int num_particles):
+        self.thisptr.eval_sensor_model(&observation[0],&ranges[0], &outs[0], num_rays, num_particles)
+   
     cpdef void set_sensor_model(self, np.ndarray[double, ndim=2, mode="c"] table):
         if not table.shape[0] == table.shape[1]:
             print "Sensor model must have equal matrix dimensions, failing!"

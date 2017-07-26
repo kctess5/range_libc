@@ -32,18 +32,11 @@ Useful Links: https://github.com/MRPT/mrpt/blob/4137046479222f3a71b5c00aee1d5fa8
 #include "vendor/distance_transform.h"
 #include "includes/RangeUtils.h"
 
-#ifndef USE_SERIALIZE 
-	#define USE_SERIALIZE 0
-#endif
-
-#if USE_SERIALIZE == 1
 // serialization stuff
 #include <cereal/archives/binary.hpp>
 #include <cereal/details/helpers.hpp>
 #include <cereal/types/vector.hpp>
 #include <fstream>
-#else
-#endif
 
 #include <stdio.h>      /* printf */
 #include <cstdlib>
@@ -83,7 +76,6 @@ Useful Links: https://github.com/MRPT/mrpt/blob/4137046479222f3a71b5c00aee1d5fa8
 #define _USE_CACHED_CONSTANTS 1
 #define _USE_FAST_ROUND 0
 #define _NO_INLINE 0
-#define _LRU_CACHE_SIZE 1000000
 
 // not implemented yet -> use 16 bit integers to store zero points
 #define _CDDT_SHORT_DATATYPE 1
@@ -2026,7 +2018,7 @@ namespace ranges {
 			return;
 			#endif
 			
-			int particles_per_iter = std::ceil((float)CHUNK_SIZE / (float)num_angles);
+			int particles_per_iter = std::floor((float)CHUNK_SIZE / (float)num_angles);
 			int iters = std::ceil((float)num_particles / (float) particles_per_iter);
 			// must allways do the correct number of angles, can only split on the particles
 			for (int i = 0; i < iters; ++i) {
@@ -2104,6 +2096,11 @@ namespace ranges {
 			cpu_cddt = new CDDTCast(m, mr, td);
 			cddt_gpu = new CDDTCUDA(m.grid, m.width, m.height, max_range, theta_discretization);
 			flatten();
+
+			#if ROS_WORLD_TO_GRID_CONVERSION == 1
+			cddt_gpu->set_conversion_params(m.world_scale,m.world_angle,m.world_origin_x, m.world_origin_y, 
+				m.world_sin_angle, m.world_cos_angle);
+			#endif
 			#else
 			throw std::string("Must compile with -DWITH_CUDA=ON to use this class.");
 			#endif
@@ -2210,6 +2207,43 @@ namespace ranges {
 		void calc_range_chunk(float *ins, float *outs, int num_casts) {
 			cddt_gpu->calc_range_many(ins, outs, num_casts);
 		}
+
+		void numpy_calc_range_angles(float * ins, float * angles, float * outs, int num_particles, int num_angles) {
+			#if USE_CUDA == 1
+			#if ROS_WORLD_TO_GRID_CONVERSION == 0
+			std::cout << "Cannot use GPU numpy_calc_range without ROS_WORLD_TO_GRID_CONVERSION == 1" << std::endl;
+			return;
+			#endif
+			
+			int particles_per_iter = std::floor((float)CHUNK_SIZE / (float)num_angles);
+			int iters = std::ceil((float)num_particles / (float) particles_per_iter);
+			// must allways do the correct number of angles, can only split on the particles
+			for (int i = 0; i < iters; ++i) {
+				int num_in_chunk = particles_per_iter;
+				if (i == iters - 1) num_in_chunk = num_particles-i*particles_per_iter;
+				cddt_gpu->numpy_calc_range_angles(&ins[i*num_in_chunk*3], angles, &outs[i*num_in_chunk*num_angles],
+					num_in_chunk, num_angles);
+			}
+			#else
+			throw std::string("Must compile with -DWITH_CUDA=ON to use this class.");
+			#endif
+		}
+
+		#if SENSOR_MODEL_HELPERS == 1
+		#if USE_CUDA == 1
+		void set_sensor_model(double *table, int table_width) {
+			// convert the sensor model from a numpy array to a vector array
+			for (int i = 0; i < table_width; ++i)
+			{
+				std::vector<double> table_row;
+				for (int j = 0; j < table_width; ++j)
+					table_row.push_back(table[table_width*i + j]);
+				sensor_model.push_back(table_row);
+			}
+			cddt_gpu->set_sensor_table(table, table_width);
+		}
+		#endif
+		#endif
 	protected:
 		CDDTCast *cpu_cddt = 0;
 		unsigned int theta_discretization;
