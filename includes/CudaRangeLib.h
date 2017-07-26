@@ -75,6 +75,7 @@ public:
 	void init_buffers(float *compressed_lut_ptr, unsigned int *compressed_lut_index, unsigned short *lut_slice_widths, unsigned short *lut_bin_widths, int num_lut_els, int max_lut_w, float *lut_translations);
 	void calc_range_many(float *ins, float *outs, int num_casts);
 
+	void numpy_calc_range(float *ins, float *outs, int num_casts);
 	void numpy_calc_range_angles(float * ins, float * angles, float * outs, int num_particles, int num_angles);
 
 	void set_sensor_table(double *sensor_table, int table_width);

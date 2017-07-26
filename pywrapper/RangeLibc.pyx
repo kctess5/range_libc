@@ -91,7 +91,7 @@ cdef extern from "includes/RangeLib.h" namespace "ranges":
         void prune(float max_range)
         # this one does not do coordinate space conversion
         void calc_range_many(float * ins, float * outs, int num_casts)
-        # void numpy_calc_range(float * ins, float * outs, int num_casts)
+        void numpy_calc_range(float * ins, float * outs, int num_casts)
         void numpy_calc_range_angles(float * ins, float * angles, float * outs, int num_casts, int num_angles)
 
         void eval_sensor_model(float * obs, float * ranges, double * outs, int rays_per_particle, int particles)
@@ -335,8 +335,11 @@ cdef class PyRayMarchingGPU:
         self.thisptr = new RayMarchingGPU(deref(Map.thisptr), max_range)
     def __dealloc__(self):
         del self.thisptr
+    # cpdef void calc_range_many(self,np.ndarray[float, ndim=2, mode="c"] ins, np.ndarray[float, ndim=1, mode="c"] outs):
+    #     self.thisptr.numpy_calc_range(&ins[0,0], &outs[0], outs.shape[0])
+
     cpdef void calc_range_many(self,np.ndarray[float, ndim=2, mode="c"] ins, np.ndarray[float, ndim=1, mode="c"] outs):
-        self.thisptr.numpy_calc_range(&ins[0,0], &outs[0], outs.shape[0])
+        self.thisptr.calc_range_many(&ins[0,0], &outs[0], outs.shape[0])
 
     cpdef void calc_range_repeat_angles(self,np.ndarray[float, ndim=2, mode="c"] ins,np.ndarray[float, ndim=1, mode="c"] angles, np.ndarray[float, ndim=1, mode="c"] outs):
         self.thisptr.numpy_calc_range_angles(&ins[0,0], &angles[0], &outs[0], ins.shape[0], angles.shape[0])
@@ -371,6 +374,9 @@ cdef class PyCDDTGPU:
 
     # cpdef void calc_range_many(self,np.ndarray[float, ndim=2, mode="c"] ins, np.ndarray[float, ndim=1, mode="c"] outs):
     #     self.thisptr.numpy_calc_range(&ins[0,0], &outs[0], outs.shape[0])
+
+    cpdef void calc_range_many(self,np.ndarray[float, ndim=2, mode="c"] ins, np.ndarray[float, ndim=1, mode="c"] outs):
+        self.thisptr.calc_range_many(&ins[0,0], &outs[0], outs.shape[0])
 
     cpdef void calc_range_repeat_angles(self,np.ndarray[float, ndim=2, mode="c"] ins,np.ndarray[float, ndim=1, mode="c"] angles, np.ndarray[float, ndim=1, mode="c"] outs):
         self.thisptr.numpy_calc_range_angles(&ins[0,0], &angles[0], &outs[0], ins.shape[0], angles.shape[0])

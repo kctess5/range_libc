@@ -7,13 +7,42 @@
 #include <vector>
 #include <stdio.h>
 
-#define USE_CONST_ANNOTATIONS 1
+#define USE_CONST_ANNOTATIONS 0
 
 #define DIST_THRESHOLD 0.0
 #define STEP_COEFF 0.999
 
 __device__ float distance(int x, int y, const float *distMap, int width, int height) {
 	return distMap[x * height + y];
+}
+
+__device__ float ray_march(float theta, float max_range, float x0, float y0, int width, int height, float * distMap) {
+	// do ray casting
+	float ray_direction_x = cosf(theta);
+	float ray_direction_y = sinf(theta);
+
+	int px = 0;
+	int py = 0;
+
+	float t = 0.0;
+	float out = max_range;
+	while (t < max_range) {
+		px = x0 + ray_direction_x * t;
+		py = y0 + ray_direction_y * t;
+		if (px >= width || px < 0 || py < 0 || py >= height) {
+			out = max_range;
+			break;
+		}
+		float d = distance(px,py, distMap, width, height);
+		if (d <= DIST_THRESHOLD) {
+			float xd = px - x0;
+			float yd = py - y0;
+			out =  sqrtf(xd*xd + yd*yd);
+			break;
+		}
+		t += fmaxf(d * STEP_COEFF, 1.0);
+	}
+	return out;
 }
 
 #if USE_CONST_ANNOTATIONS == 1
@@ -27,40 +56,39 @@ __global__ void cuda_ray_marching(float * ins, float * outs, float * distMap, in
 	float y0 = ins[ind*3+1];
 	float theta = ins[ind*3+2];
 
-	float ray_direction_x = cosf(theta);
-	float ray_direction_y = sinf(theta);
+	outs[ind] = ray_march(theta, max_range, x0, y0, width, height, distMap);
 
-	int px = 0;
-	int py = 0;
+	// float ray_direction_x = cosf(theta);
+	// float ray_direction_y = sinf(theta);
 
-	float t = 0.0;
-	float out = max_range;
-	// int iters = 0;
-	while (t < max_range) {
-		px = x0 + ray_direction_x * t;
-		py = y0 + ray_direction_y * t;
+	// int px = 0;
+	// int py = 0;
 
-		if (px >= width || px < 0 || py < 0 || py >= height) {
-			out = max_range;
-			break;
-		}
-
-		float d = distance(px,py, distMap, width, height);
-
-		if (d <= DIST_THRESHOLD) {
-			float xd = px - x0;
-			float yd = py - y0;
-			out =  sqrtf(xd*xd + yd*yd);
-			break;
-		}
-
-		t += fmaxf(d * STEP_COEFF, 1.0);
-		// iters ++;
-	}
-	outs[ind] = out;
+	// float t = 0.0;
+	// float out = max_range;
+	// while (t < max_range) {
+	// 	px = x0 + ray_direction_x * t;
+	// 	py = y0 + ray_direction_y * t;
+	// 	if (px >= width || px < 0 || py < 0 || py >= height) {
+	// 		out = max_range;
+	// 		break;
+	// 	}
+	// 	float d = distance(px,py, distMap, width, height);
+	// 	if (d <= DIST_THRESHOLD) {
+	// 		float xd = px - x0;
+	// 		float yd = py - y0;
+	// 		out =  sqrtf(xd*xd + yd*yd);
+	// 		break;
+	// 	}
+	// 	t += fmaxf(d * STEP_COEFF, 1.0);
+	// }
+	// outs[ind] = out;
 }
 
-__global__ void cuda_ray_marching_world_to_grid(float * ins, float * outs, float * distMap, int width, int height, float max_range, int num_casts, float world_origin_x, float world_origin_y, float world_scale, float inv_world_scale, float world_sin_angle, float world_cos_angle, float rotation_const) {
+
+
+__global__ void cuda_ray_marching_world_to_grid(float * ins, float * outs, float * distMap, int width, int height, float max_range, int num_casts, 
+	float world_origin_x, float world_origin_y, float world_scale, float inv_world_scale, float world_sin_angle, float world_cos_angle, float rotation_const) {
 	int ind = blockIdx.x*blockDim.x + threadIdx.x;
 	if (ind >= num_casts) return; 
 
@@ -81,36 +109,34 @@ __global__ void cuda_ray_marching_world_to_grid(float * ins, float * outs, float
 	x0 = y0;
 	y0 = temp;
 
-	// do ray casting
-	float ray_direction_x = cosf(theta);
-	float ray_direction_y = sinf(theta);
+	outs[ind] = ray_march(theta, max_range, x0, y0, width, height, distMap) * world_scale;
 
-	int px = 0;
-	int py = 0;
+	// // do ray casting
+	// float ray_direction_x = cosf(theta);
+	// float ray_direction_y = sinf(theta);
 
-	float t = 0.0;
-	float out = max_range;
-	while (t < max_range) {
-		px = x0 + ray_direction_x * t;
-		py = y0 + ray_direction_y * t;
+	// int px = 0;
+	// int py = 0;
 
-		if (px >= width || px < 0 || py < 0 || py >= height) {
-			out = max_range;
-			break;
-		}
-
-		float d = distance(px,py, distMap, width, height);
-
-		if (d <= DIST_THRESHOLD) {
-			float xd = px - x0;
-			float yd = py - y0;
-			out =  sqrtf(xd*xd + yd*yd);
-			break;
-		}
-
-		t += fmaxf(d * STEP_COEFF, 1.0);
-	}
-	outs[ind] = out * world_scale;
+	// float t = 0.0;
+	// float out = max_range;
+	// while (t < max_range) {
+	// 	px = x0 + ray_direction_x * t;
+	// 	py = y0 + ray_direction_y * t;
+	// 	if (px >= width || px < 0 || py < 0 || py >= height) {
+	// 		out = max_range;
+	// 		break;
+	// 	}
+	// 	float d = distance(px,py, distMap, width, height);
+	// 	if (d <= DIST_THRESHOLD) {
+	// 		float xd = px - x0;
+	// 		float yd = py - y0;
+	// 		out =  sqrtf(xd*xd + yd*yd);
+	// 		break;
+	// 	}
+	// 	t += fmaxf(d * STEP_COEFF, 1.0);
+	// }
+	// outs[ind] = out * world_scale;
 }
 
 __global__ void cuda_ray_marching_angles_world_to_grid(float * ins, float * outs, float * distMap, int width, int height, float max_range, int num_particles, int num_angles, float world_origin_x, float world_origin_y, float world_scale, float inv_world_scale, float world_sin_angle, float world_cos_angle, float rotation_const) {
@@ -137,35 +163,34 @@ __global__ void cuda_ray_marching_angles_world_to_grid(float * ins, float * outs
 	x0 = y0;
 	y0 = temp;
 
-	// do ray casting
-	float ray_direction_x = cosf(theta);
-	float ray_direction_y = sinf(theta);
+	outs[ind] = ray_march(theta, max_range, x0, y0, width, height, distMap) * world_scale;
 
-	int px = 0;
-	int py = 0;
+	// // do ray casting
+	// float ray_direction_x = cosf(theta);
+	// float ray_direction_y = sinf(theta);
 
-	float t = 0.0;
-	float out = max_range;
-	while (t < max_range) {
-		px = x0 + ray_direction_x * t;
-		py = y0 + ray_direction_y * t;
+	// int px = 0;
+	// int py = 0;
 
-		if (px >= width || px < 0 || py < 0 || py >= height) {
-			out = max_range;
-			break;
-		}
-
-		float d = distance(px,py, distMap, width, height);
-
-		if (d <= DIST_THRESHOLD) {
-			float xd = px - x0;
-			float yd = py - y0;
-			out =  sqrtf(xd*xd + yd*yd);
-			break;
-		}
-		t += fmaxf(d * STEP_COEFF, 1.0);
-	}
-	outs[ind] = out * world_scale;
+	// float t = 0.0;
+	// float out = max_range;
+	// while (t < max_range) {
+	// 	px = x0 + ray_direction_x * t;
+	// 	py = y0 + ray_direction_y * t;
+	// 	if (px >= width || px < 0 || py < 0 || py >= height) {
+	// 		out = max_range;
+	// 		break;
+	// 	}
+	// 	float d = distance(px,py, distMap, width, height);
+	// 	if (d <= DIST_THRESHOLD) {
+	// 		float xd = px - x0;
+	// 		float yd = py - y0;
+	// 		out =  sqrtf(xd*xd + yd*yd);
+	// 		break;
+	// 	}
+	// 	t += fmaxf(d * STEP_COEFF, 1.0);
+	// }
+	// outs[ind] = out * world_scale;
 }
 
 __device__ int clamp(float val, float min, float max) {
@@ -203,6 +228,121 @@ __device__ bool is_occupied(int x, int y, const bool *d_map, int height) {
 	return d_map[x * height + y];
 }
 
+__device__ float cddt_cast(float x, float y, float heading, float max_range, int theta_discretization, int width, int height, bool * d_map, float * * d_compressed_lut_index, unsigned short * d_lut_bin_widths, int max_lut_width) {
+	// discretize theta
+	float theta = fmodf(heading, M_2PI);
+	// fmod does not wrap the angle into the positive range, so this will fix that if necessary
+	if (theta < 0.0) theta += M_2PI;
+	bool is_flipped = false;
+	if (theta >= M_PI) {
+		is_flipped = true;
+		theta -= M_PI;
+	}
+	int rounded = rintf(theta * theta_discretization / M_2PI);
+
+	// this handles the special case where the theta rounds up and should wrap around
+	if (rounded == theta_discretization >> 1) {
+		rounded = 0;
+		is_flipped = !is_flipped;
+	}
+
+	int angle_index = fmodf(rounded, theta_discretization);
+	float discrete_angle = (angle_index * M_2PI) / ((float) theta_discretization);
+	// project into lut space
+	float cosangle;
+	float sinangle;
+	sincosf(discrete_angle, &sinangle, &cosangle);
+
+	// compute LUT translation
+	float left_top_corner_y     = height*cosangle;
+	float right_bottom_corner_y = width*sinangle;
+	float right_top_corner_y    = right_bottom_corner_y + left_top_corner_y;
+	float min_corner_y = fminf(left_top_corner_y, fminf(right_top_corner_y, right_bottom_corner_y));
+	float lut_translation = fmaxf(0.0, -1.0 * min_corner_y - _EPSILON);
+
+	// float lut_translation = constData[angle_index];
+
+	// do coordinate space projection
+	float lut_space_x = x * cosangle - y * sinangle;
+	float lut_space_y = (x * sinangle + y * cosangle) + lut_translation;
+
+	// Convert a float to a signed integer in round-down mode.
+	int lut_index = __float2int_rd(lut_space_y);
+
+	// check d_lut_slice_widths if query is out of map
+	// if (lut_index < 0 || lut_index >= d_lut_slice_widths[angle_index]) {
+	if (lut_index < 0 || lut_index >= constData[angle_index]) {
+		return max_range;
+	}
+
+	// get the lut bin using the lut index
+	#if USE_CONST_ANNOTATIONS == 1
+	const float *lut_bin = d_compressed_lut_index[angle_index*max_lut_width+lut_index];
+	#else
+	float *lut_bin = d_compressed_lut_index[angle_index*max_lut_width+lut_index];
+	#endif
+
+	// get the lut bin width using d_lut_bin_widths
+	int lut_bin_width = d_lut_bin_widths[angle_index*max_lut_width+lut_index];
+
+	if (lut_bin_width == 0) {
+		return max_range;
+	}
+
+	int low = 0;
+	int high = lut_bin_width - 1;
+
+	if (is_flipped) {
+		// the furthest entry is behind the query point
+		if (lut_bin[low] > lut_space_x) {
+			return max_range;
+		}
+		if (lut_bin[high]< lut_space_x) {
+			return lut_space_x - lut_bin[high];
+		}
+
+		// TODO
+		// if (map.grid[x][y]) { return 0.0; }
+		// if (d_map[int(x) * height + int(y)]) {
+		if (is_occupied(x, y, d_map, height)) {
+			return 0.0;
+		}
+
+		for (int i = high; i >= 0; --i) {
+			float obstacle_x = lut_bin[i];
+			if (obstacle_x <= lut_space_x) {
+				return lut_space_x - obstacle_x;
+			}
+		}
+	} else {
+		// the furthest entry is behind the query point
+		if (lut_bin[high] < lut_space_x) {
+			return max_range;
+		}
+		if (lut_bin[low] > lut_space_x) {
+			return lut_bin[low] - lut_space_x;
+		}
+
+		// TODO
+		// the query point is on top of a occupied pixel
+		// this call is here rather than at the beginning, because it is apparently more efficient.
+		// I presume that this has to do with the previous two return statements
+		if (is_occupied(x, y, d_map, height)) {
+			return 0.0;
+		}
+
+		// linear search for neighbor in lut bin
+		for (int i = 0; i < lut_bin_width; ++i)
+		{
+			float obstacle_x = lut_bin[i];
+			if (obstacle_x >= lut_space_x) {
+				return obstacle_x - lut_space_x;
+			}
+		}
+	}
+	return -1.0;
+}
+
 #if USE_CONST_ANNOTATIONS == 1
 __global__ void cuda_cddt(
 	const float * __restrict__ ins, 
@@ -231,139 +371,142 @@ __global__ void cuda_cddt(
 	float y = ins[ind*3+1];
 	float heading = -ins[ind*3+2];
 
-	// discretize theta
-	float theta = fmodf(heading, M_2PI);
-	// fmod does not wrap the angle into the positive range, so this will fix that if necessary
-	if (theta < 0.0) theta += M_2PI;
+	outs[ind] = cddt_cast(x, y, heading, max_range, theta_discretization, width, height, d_map, 
+		d_compressed_lut_index, d_lut_bin_widths, max_lut_width);
 
-	bool is_flipped = false;
-	if (theta >= M_PI) {
-		is_flipped = true;
-		theta -= M_PI;
-	}
+	return;
 
-	int rounded = rintf(theta * theta_discretization / M_2PI);
+	// // discretize theta
+	// float theta = fmodf(heading, M_2PI);
+	// // fmod does not wrap the angle into the positive range, so this will fix that if necessary
+	// if (theta < 0.0) theta += M_2PI;
+	// bool is_flipped = false;
+	// if (theta >= M_PI) {
+	// 	is_flipped = true;
+	// 	theta -= M_PI;
+	// }
+	// int rounded = rintf(theta * theta_discretization / M_2PI);
 
-	// this handles the special case where the theta rounds up and should wrap around
-	if (rounded == theta_discretization >> 1) {
-		rounded = 0;
-		is_flipped = !is_flipped;
-	}
+	// // this handles the special case where the theta rounds up and should wrap around
+	// if (rounded == theta_discretization >> 1) {
+	// 	rounded = 0;
+	// 	is_flipped = !is_flipped;
+	// }
 
-	int angle_index = fmodf(rounded, theta_discretization);
-	float discrete_angle = (angle_index * M_2PI) / ((float) theta_discretization);
-	// project into lut space
-	float cosangle;
-	float sinangle;
-	sincosf(discrete_angle, &sinangle, &cosangle);
+	// int angle_index = fmodf(rounded, theta_discretization);
+	// float discrete_angle = (angle_index * M_2PI) / ((float) theta_discretization);
+	// // project into lut space
+	// float cosangle;
+	// float sinangle;
+	// sincosf(discrete_angle, &sinangle, &cosangle);
 
-	// compute LUT translation
-	float left_top_corner_y     = height*cosangle;
-	float right_bottom_corner_y = width*sinangle;
-	float right_top_corner_y    = right_bottom_corner_y + left_top_corner_y;
-	float min_corner_y = fminf(left_top_corner_y, fminf(right_top_corner_y, right_bottom_corner_y));
-	float lut_translation = fminf(0.0, -1.0 * min_corner_y - _EPSILON);
+	// // compute LUT translation
+	// float left_top_corner_y     = height*cosangle;
+	// float right_bottom_corner_y = width*sinangle;
+	// float right_top_corner_y    = right_bottom_corner_y + left_top_corner_y;
+	// float min_corner_y = fminf(left_top_corner_y, fminf(right_top_corner_y, right_bottom_corner_y));
+	// float lut_translation = fmaxf(0.0, -1.0 * min_corner_y - _EPSILON);
 
-	// float lut_translation = constData[angle_index];
+	// // float lut_translation = constData[angle_index];
 
-	// do coordinate space projection
-	float lut_space_x = x * cosangle - y * sinangle;
-	float lut_space_y = (x * sinangle + y * cosangle) + lut_translation;
+	// // do coordinate space projection
+	// float lut_space_x = x * cosangle - y * sinangle;
+	// float lut_space_y = (x * sinangle + y * cosangle) + lut_translation;
 
-	// Convert a float to a signed integer in round-down mode.
-	int lut_index = __float2int_rd(lut_space_y);
+	// // Convert a float to a signed integer in round-down mode.
+	// int lut_index = __float2int_rd(lut_space_y);
 
-	// check d_lut_slice_widths if query is out of map
-	// if (lut_index < 0 || lut_index >= d_lut_slice_widths[angle_index]) {
-	if (lut_index < 0 || lut_index >= constData[angle_index]) {
-		outs[ind] = max_range;
-		return;
-	}
+	// // check d_lut_slice_widths if query is out of map
+	// // if (lut_index < 0 || lut_index >= d_lut_slice_widths[angle_index]) {
+	// if (lut_index < 0 || lut_index >= constData[angle_index]) {
+	// 	outs[ind] = max_range;
+	// 	return;
+	// }
 
-	// get the lut bin using the lut index
-	#if USE_CONST_ANNOTATIONS == 1
-	const float *lut_bin = d_compressed_lut_index[angle_index*max_lut_width+lut_index];
-	#else
-	float *lut_bin = d_compressed_lut_index[angle_index*max_lut_width+lut_index];
-	#endif
+	// // get the lut bin using the lut index
+	// #if USE_CONST_ANNOTATIONS == 1
+	// const float *lut_bin = d_compressed_lut_index[angle_index*max_lut_width+lut_index];
+	// #else
+	// float *lut_bin = d_compressed_lut_index[angle_index*max_lut_width+lut_index];
+	// #endif
 
-	// get the lut bin width using d_lut_bin_widths
-	int lut_bin_width = d_lut_bin_widths[angle_index*max_lut_width+lut_index];
+	// // get the lut bin width using d_lut_bin_widths
+	// int lut_bin_width = d_lut_bin_widths[angle_index*max_lut_width+lut_index];
 
-	if (lut_bin_width == 0) {
-		outs[ind] = max_range;
-		return;
-	}
+	// if (lut_bin_width == 0) {
+	// 	outs[ind] = max_range;
+	// 	return;
+	// }
 
-	int low = 0;
-	int high = lut_bin_width - 1;
+	// int low = 0;
+	// int high = lut_bin_width - 1;
 
-	if (is_flipped) {
-		// the furthest entry is behind the query point
-		if (lut_bin[low] > lut_space_x) {
-			outs[ind] = max_range;
-			return;
-		}
-		if (lut_bin[high]< lut_space_x) {
-			outs[ind] = lut_space_x - lut_bin[high];
-			return;
-		}
+	// if (is_flipped) {
+	// 	// the furthest entry is behind the query point
+	// 	if (lut_bin[low] > lut_space_x) {
+	// 		outs[ind] = max_range;
+	// 		return;
+	// 	}
+	// 	if (lut_bin[high]< lut_space_x) {
+	// 		outs[ind] = lut_space_x - lut_bin[high];
+	// 		return;
+	// 	}
 
-		// TODO
-		// if (map.grid[x][y]) { return 0.0; }
-		// if (d_map[int(x) * height + int(y)]) {
-		if (is_occupied(x, y, d_map, height)) {
-			outs[ind] = 0.0;
-			return;
-		}
+	// 	// TODO
+	// 	// if (map.grid[x][y]) { return 0.0; }
+	// 	// if (d_map[int(x) * height + int(y)]) {
+	// 	if (is_occupied(x, y, d_map, height)) {
+	// 		outs[ind] = 0.0;
+	// 		return;
+	// 	}
 
-		for (int i = high; i >= 0; --i) {
-			float obstacle_x = lut_bin[i];
-			if (obstacle_x <= lut_space_x) {
-				outs[ind] = lut_space_x - obstacle_x;
-				return;
-			}
-		}
-	} else {
-		// the furthest entry is behind the query point
-		if (lut_bin[high] < lut_space_x) {
-			outs[ind] = max_range;
-			return;
-		}
-		if (lut_bin[low] > lut_space_x) {
-			outs[ind] = lut_bin[low] - lut_space_x;
-			return;
-		}
+	// 	for (int i = high; i >= 0; --i) {
+	// 		float obstacle_x = lut_bin[i];
+	// 		if (obstacle_x <= lut_space_x) {
+	// 			outs[ind] = lut_space_x - obstacle_x;
+	// 			return;
+	// 		}
+	// 	}
+	// } else {
+	// 	// the furthest entry is behind the query point
+	// 	if (lut_bin[high] < lut_space_x) {
+	// 		outs[ind] = max_range;
+	// 		return;
+	// 	}
+	// 	if (lut_bin[low] > lut_space_x) {
+	// 		outs[ind] = lut_bin[low] - lut_space_x;
+	// 		return;
+	// 	}
 
-		// TODO
-		// the query point is on top of a occupied pixel
-		// this call is here rather than at the beginning, because it is apparently more efficient.
-		// I presume that this has to do with the previous two return statements
-		if (is_occupied(x, y, d_map, height)) {
-			outs[ind] = 0.0;
-			return;
-		}
+	// 	// TODO
+	// 	// the query point is on top of a occupied pixel
+	// 	// this call is here rather than at the beginning, because it is apparently more efficient.
+	// 	// I presume that this has to do with the previous two return statements
+	// 	if (is_occupied(x, y, d_map, height)) {
+	// 		outs[ind] = 0.0;
+	// 		return;
+	// 	}
 
-		// linear search for neighbor in lut bin
-		for (int i = 0; i < lut_bin_width; ++i)
-		{
-			float obstacle_x = lut_bin[i];
-			if (obstacle_x >= lut_space_x) {
-				outs[ind] = obstacle_x - lut_space_x;
-				return;
-			}
-		}
-	}
+	// 	// linear search for neighbor in lut bin
+	// 	for (int i = 0; i < lut_bin_width; ++i)
+	// 	{
+	// 		float obstacle_x = lut_bin[i];
+	// 		if (obstacle_x >= lut_space_x) {
+	// 			outs[ind] = obstacle_x - lut_space_x;
+	// 			return;
+	// 		}
+	// 	}
+	// }
 
-	// check a few edge cases before search
-	// 
-	// 
-	// 
-	// 
-	// make sure this pixel is not occupied in the source map
-	// perform linear search through the lut bin to find neighbor in the lut
-	// return the distance to the neighbor
-	outs[ind] = -1.0;
+	// // check a few edge cases before search
+	// // 
+	// // 
+	// // 
+	// // 
+	// // make sure this pixel is not occupied in the source map
+	// // perform linear search through the lut bin to find neighbor in the lut
+	// // return the distance to the neighbor
+	// outs[ind] = -1.0;
 }
 
 
@@ -424,13 +567,11 @@ __global__ void cuda_cddt_angles_world_to_grid(
 	float theta = fmodf(-heading, M_2PI);
 	// fmod does not wrap the angle into the positive range, so this will fix that if necessary
 	if (theta < 0.0) theta += M_2PI;
-
 	bool is_flipped = false;
 	if (theta >= M_PI) {
 		is_flipped = true;
 		theta -= M_PI;
 	}
-
 	int rounded = rintf(theta * theta_discretization / M_2PI);
 
 	// this handles the special case where the theta rounds up and should wrap around
@@ -451,9 +592,7 @@ __global__ void cuda_cddt_angles_world_to_grid(
 	float right_bottom_corner_y = width*sinangle;
 	float right_top_corner_y    = right_bottom_corner_y + left_top_corner_y;
 	float min_corner_y = fminf(left_top_corner_y, fminf(right_top_corner_y, right_bottom_corner_y));
-	float lut_translation = fminf(0.0, -1.0 * min_corner_y - _EPSILON);
-
-	// float lut_translation = constData[angle_index];
+	float lut_translation = fmaxf(0.0, -1.0 * min_corner_y - _EPSILON);
 
 	// do coordinate space projection
 	float lut_space_x = x * cosangle - y * sinangle;
@@ -694,47 +833,6 @@ void RayMarchingCUDA::numpy_calc_range_angles(float * ins, float * angles, float
 	#endif
 }
 
-// void RayMarchingCUDA::calc_range_repeat_angles_eval_sensor_model(float * ins, float * angles, float * obs, double * weights, int num_particles, int num_angles) {
-// 	#if ROS_WORLD_TO_GRID_CONVERSION == 1
-// 	std::cout << "Do not use calc_range_repeat_angles_eval_sensor_model for GPU, unimplemented" << std::endl;
-// 	std::cout << "Instead use numpy_calc_range_angles followed by a standard sensor evaluation method." << std::endl;
-// 	// if (!allocated_weights) {
-// 	// 	cudaMalloc((void **)&d_weights, num_particles*num_angles*sizeof(double));
-// 	// 	allocated_weights = true;
-// 	// }
-// 	// // copy queries to GPU buffer
-// 	// cudaMemcpy(d_ins, ins, sizeof(float) * num_particles * 3,cudaMemcpyHostToDevice);
-// 	// // also copy angles to end of GPU buffer, this assumes there is enough space (which there should be)
-// 	// cudaMemcpy(&d_ins[num_particles * 3], angles, sizeof(float) * num_angles,cudaMemcpyHostToDevice);
-
-// 	// // execute queries on the GPU, have to pass coordinate space conversion constants
-// 	// cuda_ray_marching_angles_world_to_grid<<< CHUNK_SIZE / NUM_THREADS, NUM_THREADS >>>(d_ins,d_outs, d_distMap, 
-// 	// 	width, height, max_range, num_particles, num_angles, world_origin_x, world_origin_y, 
-// 	// 	world_scale, inv_world_scale, world_sin_angle, world_cos_angle, rotation_const);
-
-// 	// cudaMemcpy(d_ins, obs, sizeof(float) * num_angles,cudaMemcpyHostToDevice);
-
-// 	// // read from sensor table
-// 	// cuda_eval_sensor_table<<< CHUNK_SIZE / NUM_THREADS, NUM_THREADS >>>(d_ins, d_outs, d_weights, d_sensorTable, num_angles, num_particles, inv_world_scale, table_width);
-
-// 	// cuda_eval_sensor_table<<< CHUNK_SIZE / NUM_THREADS, NUM_THREADS >>>(d_ins, d_outs, d_weights, d_sensorTable, num_angles, num_particles, inv_world_scale, table_width);
-// 	// // cuda_eval_sensor_table(angles, d_sensorTable)
-// 	// // multiplicatively accumulate weights on the GPU
-	
-
-// 	// // copy weights back to CPU
-// 	// cudaMemcpy(weights,d_weights,sizeof(double)*num_particles,cudaMemcpyDeviceToHost);
-// 	// cudaDeviceSynchronize();
-// 	#else
-// 	std::cout << "GPU numpy_calc_range_angles only works with ROS world to grid conversion enabled" << std::endl;
-// 	#endif
-// }
-
-
-
-
-
-
 ///////////////////////////////////////////////////////////
 
 
@@ -765,7 +863,8 @@ CDDTCUDA::~CDDTCUDA() {
 	cudaFree(d_map);
 }
 
-void CDDTCUDA::init_buffers(float *compressed_lut_ptr, unsigned int *compressed_lut_index, unsigned short *lut_slice_widths, unsigned short *lut_bin_widths, int num_lut_els, int max_lut_w, float *lut_translations) {
+void CDDTCUDA::init_buffers(float *compressed_lut_ptr, unsigned int *compressed_lut_index, unsigned short *lut_slice_widths, 
+	unsigned short *lut_bin_widths, int num_lut_els, int max_lut_w, float *lut_translations) {
 	std::cout << "Initializing buffers on device..." << std::endl;
 	max_lut_width = max_lut_w;
 	if (is_initialized) {
@@ -819,7 +918,8 @@ void CDDTCUDA::calc_range_many(float *ins, float *outs, int num_casts) {
 	// copy queries to GPU buffer
 	cudaMemcpy(d_ins, ins, sizeof(float) * num_casts * 3,cudaMemcpyHostToDevice);
 	// execute queries on the GPU
-	cuda_cddt<<< CHUNK_SIZE / NUM_THREADS, NUM_THREADS >>>(d_ins,d_outs, d_map, width, height, max_range, num_casts, theta_discretization, max_lut_width, d_compressed_lut_ptr, d_compressed_lut_index, d_lut_slice_widths, d_lut_bin_widths);
+	cuda_cddt<<< CHUNK_SIZE / NUM_THREADS, NUM_THREADS >>>(d_ins,d_outs, d_map, width, height, max_range, num_casts, 
+		theta_discretization, max_lut_width, d_compressed_lut_ptr, d_compressed_lut_index, d_lut_slice_widths, d_lut_bin_widths);
 	err_check();
 
 	// copy results back to CPU
@@ -834,6 +934,45 @@ void CDDTCUDA::set_sensor_table(double *table, int t_w) {
 	cudaMemcpy(d_sensorTable, table, table_size, cudaMemcpyHostToDevice);
 }
 
+
+// num_casts must be less than or equal to chunk size
+void CDDTCUDA::numpy_calc_range(float *ins, float *outs, int num_casts) {
+	if (!is_initialized) {
+		std::cout << "Must initialize GPU buffers before using calc_range_many" << std::endl;
+		return;
+	}
+	// std::cout << "cuda calc range" << std::endl;
+
+	// copy queries to GPU buffer
+	cudaMemcpy(d_ins, ins, sizeof(float) * num_casts * 3,cudaMemcpyHostToDevice);
+	// execute queries on the GPU
+	cuda_cddt<<< CHUNK_SIZE / NUM_THREADS, NUM_THREADS >>>(d_ins,d_outs, d_map, width, height, max_range, num_casts, 
+		theta_discretization, max_lut_width, d_compressed_lut_ptr, d_compressed_lut_index, d_lut_slice_widths, d_lut_bin_widths);
+	err_check();
+
+	// copy results back to CPU
+	cudaMemcpy(outs,d_outs,sizeof(float)*num_casts,cudaMemcpyDeviceToHost);
+	cudaDeviceSynchronize();
+
+
+
+
+
+	// #if ROS_WORLD_TO_GRID_CONVERSION == 1
+	// // copy queries to GPU buffer
+	// cudaMemcpy(d_ins, ins, sizeof(float) * num_casts * 3,cudaMemcpyHostToDevice);
+	// // execute queries on the GPU, have to pass coordinate space conversion constants
+	// cuda_cddt_world_to_grid<<< CHUNK_SIZE / NUM_THREADS, NUM_THREADS >>>(d_ins,d_outs, d_map, width, height, max_range, num_casts, 
+	// 	theta_discretization, max_lut_width, d_compressed_lut_ptr, d_compressed_lut_index, d_lut_slice_widths, d_lut_bin_widths, 
+	// 	world_origin_x, world_origin_y, world_scale, inv_world_scale, world_sin_angle, world_cos_angle, rotation_const);
+	// err_check();
+	// // copy results back to CPU
+	// cudaMemcpy(outs,d_outs,sizeof(float)*num_casts,cudaMemcpyDeviceToHost);
+	// cudaDeviceSynchronize();
+	// #else
+	// std::cout << "GPU numpy_calc_range only works with ROS world to grid conversion enabled" << std::endl;
+	// #endif
+}
 
 // num_casts must be less than or equal to chunk size
 void CDDTCUDA::numpy_calc_range_angles(float * ins, float * angles, float * outs, int num_particles, int num_angles) {

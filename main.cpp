@@ -98,7 +98,70 @@ CAST_T construct_discrete_method(OMap map, float max_dist, int theta_disc, std::
 	}
 }
 
+bool fleq(float a, float b) {
+	return fabs(a - b) < 0.001;
+}
+
+bool sanity_check() {
+	OMap map = OMap(QUOTE(BASEPATH) "/maps/basement_hallways_5cm.png");
+
+	int width = map.width;
+	int height = map.height;
+
+	CDDTCast rc = CDDTCast(map, 500, 108);
+	CDDTCastGPU rcgpu = CDDTCastGPU(map, 500, 108);
+	RayMarching rm = RayMarching(map, 500);
+	RayMarchingGPU rmgpu = RayMarchingGPU(map, 500);
+
+	float *samples = new float[RANDOM_SAMPLES*3];
+	float *outs = new float[RANDOM_SAMPLES];
+	float *outs2 = new float[RANDOM_SAMPLES];
+			
+	Benchmark<RayMarching>::get_random_samples(samples, RANDOM_SAMPLES, width, height);
+
+	rcgpu.calc_range_many(samples, outs, RANDOM_SAMPLES);
+
+
+	rmgpu.calc_range_many(samples, outs2, RANDOM_SAMPLES);
+
+	int num_bad = 0;
+	bool sane = true;
+	for (int i = 0; i < RANDOM_SAMPLES; ++i)
+	{
+		float rng = rc.calc_range(samples[i*3+0], samples[i*3+1], samples[i*3+2]);
+		bool sall_good = fleq(outs[i], rng);
+
+
+		float gnd = rm.calc_range(samples[i*3+0], samples[i*3+1], samples[i*3+2]);
+		// bool sall_good = fleq(outs2[i], gnd);
+		sane = sane && sall_good;
+
+		if (!sall_good && num_bad < 100) {
+			
+			std::cout << "Expected: " << rng << "   got: " << outs[i] << "  gnd: " << gnd << ", " << outs2[i] << std::endl;
+		}
+
+		if (!sall_good)
+		{
+			num_bad += 1;
+		}
+	}
+	std::cout << "num_bad: " << num_bad << std::endl;
+	return sane;
+	// create CDDT method
+	// create CDDTGPU method
+	// get a shit ton of samples
+	// compare outputs, they should be equivalent
+}
+
 int main(int argc, char *argv[]) {
+	bool is_sane = sanity_check();
+
+	std::cout << "is_sane: " << is_sane << std::endl;
+
+	exit(1);
+
+
 	// set usage message
 	std::string usage("This library provides fast 2D ray casting on occupancy grid maps.  Sample usage:\n\n");
 	usage += "   ";
@@ -400,7 +463,7 @@ int main(int argc, char *argv[]) {
 			std::cout << ".....rays cast: " << num_samples << std::endl;
 
 			// print first few outputs for sanity checking
-			for (int i = 0; i < 10; ++i)
+			for (int i = 0; i < 1000; ++i)
 				std::cout << outs[i] << std::endl;
 		}
 		
@@ -478,7 +541,7 @@ int main(int argc, char *argv[]) {
 			std::cout << ".....rays cast: " << num_samples << std::endl;
 
 			// print first few outputs for sanity checking
-			for (int i = 0; i < 10; ++i)
+			for (int i = 0; i < 1000; ++i)
 				std::cout << outs[i] << std::endl;
 		}
 		

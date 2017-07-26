@@ -1440,6 +1440,8 @@ namespace ranges {
 			float lut_space_x = x * cosangle - y * sinangle;
 			float lut_space_y = (x * sinangle + y * cosangle) + lut_translations[angle_index];
 
+			// return lut_translations[angle_index];
+
 			int lut_index = (int) lut_space_y;
 			// this is to prevent segfaults
 			if (lut_index < 0 || lut_index >= compressed_lut[angle_index].size())
@@ -2119,6 +2121,24 @@ namespace ranges {
 			cddt_gpu = new CDDTCUDA(cpu_cddt->map.grid, cpu_cddt->map.width, cpu_cddt->map.height, max_range, theta_discretization);
 			map = *cpu_cddt->getMap();
 			flatten();
+		}
+
+		void numpy_calc_range(float * ins, float * outs, int num_casts) {
+			#if USE_CUDA == 1
+			#if ROS_WORLD_TO_GRID_CONVERSION == 0
+			std::cout << "Cannot use GPU numpy_calc_range without ROS_WORLD_TO_GRID_CONVERSION == 1" << std::endl;
+			return;
+			#endif
+			maybe_warn(num_casts);
+			int iters = std::ceil((float)num_casts / (float)CHUNK_SIZE);
+			for (int i = 0; i < iters; ++i) {
+				int num_in_chunk = CHUNK_SIZE;
+				if (i == iters - 1) num_in_chunk = num_casts-i*CHUNK_SIZE;
+				cddt_gpu->numpy_calc_range(&ins[i*CHUNK_SIZE*3],&outs[i*CHUNK_SIZE],num_in_chunk);
+			}
+			#else
+			throw std::string("Must compile with -DWITH_CUDA=ON to use this class.");
+			#endif
 		}
 
 		// this function creates a flat array out of the 3D CDDT vector container for use

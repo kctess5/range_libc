@@ -2,7 +2,7 @@ import range_libc
 import numpy as np
 import itertools, time
 # import matplotlib.mlab as mlab
-# import matplotlib.pyplot as plt
+import matplotlib.pyplot as plt
 
 ####################################################################################################
 #
@@ -27,12 +27,58 @@ import itertools, time
 # print range_libc.USE_LRU_CACHE
 # print range_libc.LRU_CACHE_SIZE
 
-# testMap = range_libc.PyOMap("../maps/basement_hallways_5cm.png",1)
-testMap = range_libc.PyOMap("../maps/synthetic.map.png",1)
+testMap = range_libc.PyOMap("../maps/basement_hallways_5cm.png",1)
+# testMap = range_libc.PyOMap("../maps/synthetic.map.png",1)
 # testMap = range_libc.PyOMap("/home/racecar/racecar-ws/src/TA_examples/lab5/maps/basement.png",1)
 
 if testMap.error():
 	exit()
+
+
+ranges = np.zeros(108, dtype=np.float32)
+queries = np.zeros((1,3), dtype=np.float32)
+queries[0,:] = [500,500,0]
+angles = np.linspace(0, np.pi * 2.0, 108).astype(np.float32)
+
+
+full_queries = np.zeros((108,3), dtype=np.float32)
+full_queries[:,0] = queries[0,0]
+full_queries[:,1] = queries[0,1]
+full_queries[:,2] = angles
+
+
+rmgpu = range_libc.PyRayMarchingGPU(testMap, 500)
+cddtgpu = range_libc.PyCDDTGPU(testMap, 500, 108)
+
+# rmgpu.calc_range_repeat_angles(queries, angles, ranges)
+# plt.plot(ranges, label="rmgpu")
+
+rmgpu.calc_range_many(full_queries, ranges)
+plt.plot(ranges, label="rmgpu2")
+# plt.show()
+
+# cddtgpu.calc_range_repeat_angles(queries, angles, ranges)
+# plt.plot(ranges, label="cddtgpu1")
+
+cddtgpu.calc_range_many(full_queries, ranges)
+plt.plot(ranges, label="cddtgpu2")
+
+# cddtgpu.calc_range_many(queries, angles, ranges)
+
+# calc_range_many
+
+
+# cddt = range_libc.PyCDDTCast(testMap, 500, 108)
+# cddt.calc_range_repeat_angles(queries, angles, ranges)
+# plt.plot(ranges, label="cddt")
+
+# plt.plot(ranges)
+plt.legend()
+plt.show()
+
+
+
+exit()
 # testMap.save("./test.png")
 
 num_vals = 100000
