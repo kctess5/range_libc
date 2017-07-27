@@ -50,18 +50,18 @@ full_queries[:,2] = angles
 rmgpu = range_libc.PyRayMarchingGPU(testMap, 500)
 cddtgpu = range_libc.PyCDDTGPU(testMap, 500, 108)
 
-# rmgpu.calc_range_repeat_angles(queries, angles, ranges)
-# plt.plot(ranges, label="rmgpu")
+rmgpu.calc_range_repeat_angles(queries, angles, ranges)
+plt.plot(ranges, label="rmgpu")
 
-rmgpu.calc_range_many(full_queries, ranges)
-plt.plot(ranges, label="rmgpu2")
+# rmgpu.calc_range_many(full_queries, ranges)
+# plt.plot(ranges, label="rmgpu2")
 # plt.show()
 
-# cddtgpu.calc_range_repeat_angles(queries, angles, ranges)
-# plt.plot(ranges, label="cddtgpu1")
+cddtgpu.calc_range_repeat_angles(queries, angles, ranges)
+plt.plot(ranges, label="cddtgpu1")
 
-cddtgpu.calc_range_many(full_queries, ranges)
-plt.plot(ranges, label="cddtgpu2")
+# cddtgpu.calc_range_many(full_queries, ranges)
+# plt.plot(ranges, label="cddtgpu2")
 
 # cddtgpu.calc_range_many(queries, angles, ranges)
 

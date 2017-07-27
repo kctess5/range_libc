@@ -159,7 +159,7 @@ int main(int argc, char *argv[]) {
 
 	std::cout << "is_sane: " << is_sane << std::endl;
 
-	exit(1);
+	// exit(1);
 
 
 	// set usage message
@@ -463,7 +463,7 @@ int main(int argc, char *argv[]) {
 			std::cout << ".....rays cast: " << num_samples << std::endl;
 
 			// print first few outputs for sanity checking
-			for (int i = 0; i < 1000; ++i)
+			for (int i = 0; i < 10; ++i)
 				std::cout << outs[i] << std::endl;
 		}
 		
@@ -541,7 +541,7 @@ int main(int argc, char *argv[]) {
 			std::cout << ".....rays cast: " << num_samples << std::endl;
 
 			// print first few outputs for sanity checking
-			for (int i = 0; i < 1000; ++i)
+			for (int i = 0; i < 10; ++i)
 				std::cout << outs[i] << std::endl;
 		}
 		

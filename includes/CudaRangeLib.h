@@ -67,6 +67,12 @@ private:
 	#endif
 };
 
+struct cddt_cast_data
+{
+	float *lut_bin;
+	unsigned short lut_bin_width;
+};
+
 class CDDTCUDA
 {
 public:
@@ -108,6 +114,8 @@ protected:
 	float **d_compressed_lut_index;
 	unsigned short *d_lut_slice_widths;
 	unsigned short *d_lut_bin_widths;
+
+	cddt_cast_data *d_cast_data;
 
 	float *d_ins;
 	float *d_outs;
