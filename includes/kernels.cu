@@ -148,24 +148,43 @@ __device__ bool is_occupied(int x, int y, const bool *d_map, int height) {
 	return d_map[x * height + y];
 }
 
+#define USE_LOW_DIVERGENCE_LOGIC 0
+#define USE_LOW_DIVERGENCE_LOGIC2 0
+#define LINEAR_SEARCH_THRESHOLD 256
+
 __device__ float cddt_cast(float x, float y, float heading, float max_range, int theta_discretization, int width, int height, bool * d_map, 
 	float * * d_compressed_lut_index, unsigned short * d_lut_bin_widths, int max_lut_width, cddt_cast_data * d_cddt_cast_data) {
 	// discretize theta
 	float theta = fmodf(heading, M_2PI);
 	// fmod does not wrap the angle into the positive range, so this will fix that if necessary
-	if (theta < 0.0) theta += M_2PI;
-	bool is_flipped = false;
-	if (theta >= M_PI) {
-		is_flipped = true;
-		theta -= M_PI;
-	}
+	
+	// lower computation divergence
+	#if USE_LOW_DIVERGENCE_LOGIC == 1
+		theta += (theta < 0.0) * M_2PI;
+		bool is_flipped = (theta >= M_PI);
+		theta -= is_flipped * M_PI;
+	#else
+		if (theta < 0.0) theta += M_2PI;
+		bool is_flipped = false;
+		if (theta >= M_PI) {
+			is_flipped = true;
+			theta -= M_PI;
+		}
+	#endif
+
 	int rounded = rintf(theta * theta_discretization / M_2PI);
 
 	// this handles the special case where the theta rounds up and should wrap around
-	if (rounded == theta_discretization >> 1) {
-		rounded = 0;
-		is_flipped = !is_flipped;
-	}
+	#if USE_LOW_DIVERGENCE_LOGIC2 == 1
+		bool special_case_theta_wrap = (rounded == theta_discretization >> 1);
+		rounded *= (!special_case_theta_wrap);
+	#else
+		if (rounded == theta_discretization >> 1) {
+			rounded = 0;
+			is_flipped = !is_flipped;
+		}
+	#endif
+	
 
 	int angle_index = fmodf(rounded, theta_discretization);
 	float discrete_angle = (angle_index * M_2PI) / ((float) theta_discretization);
@@ -249,8 +268,10 @@ __device__ float cddt_cast(float x, float y, float heading, float max_range, int
 			return 0.0;
 		}
 
+		// linear search
+		float obstacle_x;
 		for (int i = high; i >= 0; --i) {
-			float obstacle_x = lut_bin[i];
+			obstacle_x = lut_bin[i];
 			if (obstacle_x <= lut_space_x) {
 				return lut_space_x - obstacle_x;
 			}
@@ -273,9 +294,10 @@ __device__ float cddt_cast(float x, float y, float heading, float max_range, int
 		}
 
 		// linear search for neighbor in lut bin
+		float obstacle_x;
 		for (int i = 0; i < lut_bin_width; ++i)
 		{
-			float obstacle_x = lut_bin[i];
+			obstacle_x = lut_bin[i];
 			if (obstacle_x >= lut_space_x) {
 				return obstacle_x - lut_space_x;
 			}
@@ -476,7 +498,7 @@ CDDTCUDA::~CDDTCUDA() {
 	cudaFree(d_map);
 }
 
-void CDDTCUDA::init_buffers(float *compressed_lut_ptr, unsigned int *compressed_lut_index, unsigned short *lut_slice_widths, 
+int64_t CDDTCUDA::init_buffers(float *compressed_lut_ptr, unsigned int *compressed_lut_index, unsigned short *lut_slice_widths, 
 	unsigned short *lut_bin_widths, int num_lut_els, int max_lut_w, float *lut_translations) {
 	std::cout << "Initializing buffers on device..." << std::endl;
 	max_lut_width = max_lut_w;
@@ -496,11 +518,13 @@ void CDDTCUDA::init_buffers(float *compressed_lut_ptr, unsigned int *compressed_
 	cudaMalloc((void **)&d_compressed_lut_index, max_lut_width*theta_discretization*sizeof(float**));
 	cudaMalloc((void **)&d_lut_slice_widths, theta_discretization*sizeof(unsigned short));
 	cudaMalloc((void **)&d_lut_bin_widths, max_lut_width*theta_discretization*sizeof(unsigned short));
-
 	cudaMalloc((void **)&d_cast_data, max_lut_width*theta_discretization*sizeof(cddt_cast_data));
 
-	
-
+	int64_t bytes_used = num_lut_els*sizeof(float)
+	                   + max_lut_width*theta_discretization*sizeof(float**)
+	                   + theta_discretization*sizeof(unsigned short)
+	                   + max_lut_width*theta_discretization*sizeof(unsigned short)
+	                   + max_lut_width*theta_discretization*sizeof(cddt_cast_data);
 
 	// copy LUT translations
 	// cudaMemcpyToSymbol(constData, lut_translations, theta_discretization*sizeof(float));
@@ -538,6 +562,8 @@ void CDDTCUDA::init_buffers(float *compressed_lut_ptr, unsigned int *compressed_
 	is_initialized = true;
 	free(device_pointer_index);
 	free(cast_data);
+
+	return bytes_used;
 }
 
 void CDDTCUDA::calc_range_many(float *ins, float *outs, int num_casts) {

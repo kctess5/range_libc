@@ -78,7 +78,7 @@ class CDDTCUDA
 public:
 	CDDTCUDA(std::vector<std::vector<bool> > grid, int w, int h, float mr, int theta_disc);
 	~CDDTCUDA();
-	void init_buffers(float *compressed_lut_ptr, unsigned int *compressed_lut_index, unsigned short *lut_slice_widths, unsigned short *lut_bin_widths, int num_lut_els, int max_lut_w, float *lut_translations);
+	int64_t init_buffers(float *compressed_lut_ptr, unsigned int *compressed_lut_index, unsigned short *lut_slice_widths, unsigned short *lut_bin_widths, int num_lut_els, int max_lut_w, float *lut_translations);
 	void calc_range_many(float *ins, float *outs, int num_casts);
 
 	void numpy_calc_range(float *ins, float *outs, int num_casts);

@@ -136,10 +136,10 @@ bool sanity_check() {
 		// bool sall_good = fleq(outs2[i], gnd);
 		sane = sane && sall_good;
 
-		if (!sall_good && num_bad < 100) {
+		// if (!sall_good && num_bad < 100) {
 			
-			std::cout << "Expected: " << rng << "   got: " << outs[i] << "  gnd: " << gnd << ", " << outs2[i] << std::endl;
-		}
+		// 	std::cout << "Expected: " << rng << "   got: " << outs[i] << "  gnd: " << gnd << ", " << outs2[i] << std::endl;
+		// }
 
 		if (!sall_good)
 		{
@@ -156,7 +156,6 @@ bool sanity_check() {
 
 int main(int argc, char *argv[]) {
 	bool is_sane = sanity_check();
-
 	std::cout << "is_sane: " << is_sane << std::endl;
 
 	// exit(1);
@@ -443,6 +442,11 @@ int main(int argc, char *argv[]) {
 			std::chrono::duration_cast<std::chrono::duration<double>>(construction_end - construction_start);
 		std::cout << "...construction time: " << construction_dur.count() << std::endl;
 
+
+		if (DO_LOG) {
+			summary << "rmgpu," << construction_dur.count() << "," << rmgpu.cpu_memory() << "/"<< rmgpu.gpu_memory() << std::endl;
+		}
+
 		if (FLAGS_which_benchmark == "grid") {
 			int num_samples = Benchmark<RayMarching>::num_grid_samples(GRID_STEP, GRID_RAYS, GRID_SAMPLES, width, height);
 			float *samples = new float[num_samples*3];
@@ -517,9 +521,26 @@ int main(int argc, char *argv[]) {
 			std::chrono::duration_cast<std::chrono::duration<double>>(construction_end - construction_start);
 		std::cout << "...construction time: " << construction_dur.count() << std::endl;
 
+
+		
+
 		if (utils::has(utils::PCDDTGPU, methods)) {
 			std::cout << "pruning" << std::endl;
+
+			auto prune_start = std::chrono::high_resolution_clock::now();
 			cddtgpu.prune(MAX_DISTANCE);
+			auto prune_end = std::chrono::high_resolution_clock::now();
+			std::chrono::duration<double> prune_dur = 
+				std::chrono::duration_cast<std::chrono::duration<double>>(prune_end - prune_start);
+			
+
+			if (DO_LOG) {
+				summary << "pcddtgpu," << construction_dur.count() + prune_dur.count() << "," << cddtgpu.cpu_memory() << "/"<< cddtgpu.gpu_memory() << std::endl;
+			}
+		} else {
+			if (DO_LOG) {
+				summary << "cddtgpu," << construction_dur.count() << "," << cddtgpu.cpu_memory() << "/"<< cddtgpu.gpu_memory() << std::endl;
+			}
 		}
 
 		if (FLAGS_which_benchmark == "grid") {

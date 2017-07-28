@@ -358,12 +358,17 @@ cdef class PyRayMarchingGPU:
 cdef class PyCDDTGPU:
     cdef CDDTCastGPU *thisptr      # hold a C++ instance which we're wrapping
     cdef float max_range
-    def __cinit__(self, PyOMap Map, float max_range, unsigned int theta_disc):
+    def __cinit__(self, PyOMap Map, float max_range, unsigned int theta_disc, string serialized_path=None):
         if SHOULD_USE_CUDA == False:
             print "CANNOT USE CDDTCastGPU - must compile RangeLib with USE_CUDA=1"
             return
-        self.max_range = max_range
-        self.thisptr = new CDDTCastGPU(deref(Map.thisptr), max_range, theta_disc)
+
+        if serialized_path == None:
+            self.max_range = max_range
+            self.thisptr = new CDDTCastGPU(deref(Map.thisptr), max_range, theta_disc)
+        else:
+            self.thisptr = new CDDTCastGPU()
+            self.thisptr.deserialize(serialized_path)
     def __dealloc__(self):
         del self.thisptr
     cpdef void prune(self, float max_range=-1.0):

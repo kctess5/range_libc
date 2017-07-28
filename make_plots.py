@@ -19,20 +19,23 @@ def get_data(fn):
 	result=np.array(raw_data[1:]).astype('float')
 	data = result[:,3]
 	# data = reject_outliers(data)
-	data = data[data<0.0000035]
+	data = data[data<0.000007]
 	return data
 
 def violin_plot():
 
-	folder = "./tmp/"
+	# folder = "./tmp/"
+	folder = "./build/logs/"
 
-	files = ["glt.csv", "pcddt.csv", "cddt.csv", "rm.csv", "bl.csv"]
-	label = ['Lookup table','Pruned CDDT','CDDT','Ray Marching',"Bresenham's line"]
+	# files = ["glt.csv", "pcddt.csv", "cddt.csv", "rm.csv", "bl.csv"]
+	# label = ['Lookup table','Pruned CDDT','CDDT','Ray Marching',"Bresenham's line"]
+	files = [ "pcddt.csv", "cddt.csv", "rm.csv", "bl.csv"]
+	label = ['Pruned CDDT','CDDT','Ray Marching',"Bresenham's line"]
 	files = map(lambda x: folder + x, files)
 	# print files
 	data = map(get_data, files)
 
-	pos = [1,2,3,4,5]
+	pos = [1,2,3,4]
 
 	# for i in xrange(5):
 	# 	print files[i]
@@ -62,7 +65,7 @@ def violin_plot():
 	axes.set_yticks(pos)
 	axes.set_yticklabels(label)
 
-	axes.set_title("Completion times for basement map")
+	axes.set_title("Completion times for super large basement map")
 	plt.tight_layout()
 
 	for pc in violin_parts['bodies']:

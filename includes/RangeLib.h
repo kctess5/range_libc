@@ -2082,6 +2082,14 @@ namespace ranges {
 		}
 	
 		int memory() { return distImage->memory(); }
+
+		int gpu_memory() {
+			return sizeof(float) * (CHUNK_SIZE*4 + distImage->width*distImage->height);
+		}
+
+		int cpu_memory() {
+			return distImage->memory();
+		}
 	protected:
 		DistanceTransform *distImage = 0;
 		#if USE_CUDA == 1
@@ -2215,7 +2223,7 @@ namespace ranges {
 					lut_bin_widths[a*max_lut_width+i] = cpu_cddt->compressed_lut[a][i].size();
 				}
 			}
-			cddt_gpu->init_buffers(compressed_lut_ptr, compressed_lut_index, lut_slice_widths, lut_bin_widths, num_els, max_lut_width, &cpu_cddt->lut_translations[0]);
+			gpu_mem_used = cddt_gpu->init_buffers(compressed_lut_ptr, compressed_lut_index, lut_slice_widths, lut_bin_widths, num_els, max_lut_width, &cpu_cddt->lut_translations[0]);
 			std::cout << "done flattening:" << max_lut_width << " " << sizeof(float*) << " " << sizeof(unsigned int) << std::endl;
 		}
 
@@ -2264,9 +2272,21 @@ namespace ranges {
 		}
 		#endif
 		#endif
+
+		int gpu_memory() {
+			return sizeof(float)*(CHUNK_SIZE * 4) 
+			     + sizeof(bool)*cpu_cddt->getMap()->width*cpu_cddt->getMap()->height
+			     + gpu_mem_used;
+		}
+
+		int cpu_memory() {
+			return cpu_cddt->memory();
+		}
 	protected:
 		CDDTCast *cpu_cddt = 0;
 		unsigned int theta_discretization;
+
+		int64_t gpu_mem_used = -1;
 
 		unsigned int max_lut_width;
 		bool has_flat_array;
