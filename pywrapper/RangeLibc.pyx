@@ -87,8 +87,10 @@ cdef extern from "includes/RangeLib.h" namespace "ranges":
         void set_sensor_model(double * table, int width)
 
     cdef cppclass CDDTCastGPU:
+        CDDTCastGPU()
         CDDTCastGPU(OMap m, float mr, unsigned int td)
         void prune(float max_range)
+        void deserialize(string path)
         # this one does not do coordinate space conversion
         void calc_range_many(float * ins, float * outs, int num_casts)
         void numpy_calc_range(float * ins, float * outs, int num_casts)
@@ -358,12 +360,12 @@ cdef class PyRayMarchingGPU:
 cdef class PyCDDTGPU:
     cdef CDDTCastGPU *thisptr      # hold a C++ instance which we're wrapping
     cdef float max_range
-    def __cinit__(self, PyOMap Map, float max_range, unsigned int theta_disc, string serialized_path=None):
+    def __cinit__(self, PyOMap Map, float max_range, unsigned int theta_disc, string serialized_path=""):
         if SHOULD_USE_CUDA == False:
             print "CANNOT USE CDDTCastGPU - must compile RangeLib with USE_CUDA=1"
             return
 
-        if serialized_path == None:
+        if len(serialized_path) == 0:
             self.max_range = max_range
             self.thisptr = new CDDTCastGPU(deref(Map.thisptr), max_range, theta_disc)
         else:
