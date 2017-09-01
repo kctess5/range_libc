@@ -64,6 +64,10 @@ DEFINE_string(serialize_path, "", "Path to output a serialized data structure.")
 using namespace ranges;
 using namespace benchmark;
 
+// typedef OnlineCDDTCast<utils::SortedVector<__int16_t> > ocddt_t;
+typedef OnlineCDDTCast<utils::BTreeStructure<256, __int16_t, 18> > ocddt_t;
+// typedef OnlineCDDTCast<utils::FloatBTreeStructure<> > ocddt_t;
+
 void save_log(std::stringstream &log, const char *fn) {
 	std::cout << "...saving log to: " << fn << std::endl;
 	std::ofstream file;  
@@ -155,8 +159,8 @@ bool sanity_check() {
 }
 
 int main(int argc, char *argv[]) {
-	bool is_sane = sanity_check();
-	std::cout << "is_sane: " << is_sane << std::endl;
+	// bool is_sane = sanity_check();
+	// std::cout << "is_sane: " << is_sane << std::endl;
 
 	// exit(1);
 
@@ -341,8 +345,13 @@ int main(int argc, char *argv[]) {
 				mark.grid_sample2(GRID_STEP, GRID_RAYS, GRID_SAMPLES);
 			}
 				
-			else if (FLAGS_which_benchmark == "random")
-				mark.random_sample(RANDOM_SAMPLES);
+			else if (FLAGS_which_benchmark == "random") {
+				std::vector<double> blah;
+				for (int i = 0; i < 100; ++i)
+					blah.push_back(mark.random_sample(RANDOM_SAMPLES, false));
+				std::cout << "Median time: " << utils::median(blah) << std::endl;
+				// mark.random_sample(RANDOM_SAMPLES);
+			}
 			if (DO_LOG) {
 				save_log(tlog, FLAGS_log_path+"/cddt.csv");
 			}
@@ -386,6 +395,58 @@ int main(int argc, char *argv[]) {
 			rc.serializeJson(&cddt_serialized);
 			save_log(cddt_serialized, FLAGS_cddt_save_path.c_str());
 		}
+	}
+
+
+	if (utils::has(utils::OCDDT, methods)) {
+		auto construction_start = std::chrono::high_resolution_clock::now();
+
+		ocddt_t rc = construct_discrete_method<ocddt_t >(map, MAX_DISTANCE, THETA_DISC, FLAGS_map_path, SERIALIZED_INPUT);
+
+		// OnlineCDDTCast rc = OnlineCDDTCast(map, MAX_DISTANCE, THETA_DISC);
+		auto construction_end = std::chrono::high_resolution_clock::now();
+		std::chrono::duration<double> construction_dur = 
+			std::chrono::duration_cast<std::chrono::duration<double>>(construction_end - construction_start);
+
+		double const_dur = 0;
+		if (utils::has(utils::OCDDT, methods)) {
+			std::cout << "\n...Loading range method: OnlineCDDT" << std::endl;
+			std::cout << "...construction time: " << construction_dur.count() << std::endl;
+			std::cout << "...lut size (MB): " << rc.memory() / MB << std::endl;
+			Benchmark<ocddt_t> mark = Benchmark<ocddt_t>(rc);
+			std::cout << "...Running grid benchmark" << std::endl;
+			if (DO_LOG) {
+				tlog.str("");
+				mark.set_log(&tlog);
+				summary << "cddt," << construction_dur.count() << "," << rc.memory() << std::endl;
+			}
+			if (FLAGS_which_benchmark == "grid") {
+				mark.grid_sample2(GRID_STEP, GRID_RAYS, GRID_SAMPLES);
+				mark.grid_sample2(GRID_STEP, GRID_RAYS, GRID_SAMPLES);
+			}
+				
+			else if (FLAGS_which_benchmark == "random") {
+				std::vector<double> blah;
+				for (int i = 0; i < 100; ++i)
+					blah.push_back(mark.random_sample(RANDOM_SAMPLES, false));
+				std::cout << "Median time: " << utils::median(blah) << std::endl;
+			}
+				
+			if (DO_LOG) {
+				save_log(tlog, FLAGS_log_path+"/cddt.csv");
+			}
+		}
+
+		// if (DO_SERIALIZE) {
+		// 	rc.serialize(FLAGS_serialize_path + map_name + ".ocddt.serialized");
+		// }
+
+		// if (!FLAGS_cddt_save_path.empty()) {\
+		// 	std::cout << "...saving CDDT to:" << FLAGS_cddt_save_path<< std::endl;
+		// 	std::stringstream cddt_serialized;
+		// 	rc.serializeJson(&cddt_serialized);
+		// 	save_log(cddt_serialized, FLAGS_cddt_save_path.c_str());
+		// }
 	}
 
 	if (utils::has(utils::GLT, methods)) {
@@ -520,10 +581,6 @@ int main(int argc, char *argv[]) {
 		std::chrono::duration<double> construction_dur = 
 			std::chrono::duration_cast<std::chrono::duration<double>>(construction_end - construction_start);
 		std::cout << "...construction time: " << construction_dur.count() << std::endl;
-
-
-		
-
 		if (utils::has(utils::PCDDTGPU, methods)) {
 			std::cout << "pruning" << std::endl;
 
@@ -533,7 +590,6 @@ int main(int argc, char *argv[]) {
 			std::chrono::duration<double> prune_dur = 
 				std::chrono::duration_cast<std::chrono::duration<double>>(prune_end - prune_start);
 			
-
 			if (DO_LOG) {
 				summary << "pcddtgpu," << construction_dur.count() + prune_dur.count() << "," << cddtgpu.cpu_memory() << "/"<< cddtgpu.gpu_memory() << std::endl;
 			}
@@ -599,3 +655,176 @@ int main(int argc, char *argv[]) {
 	std::cout << "done" << std::endl;
 	return 0;
 }
+
+
+template <class successor_t>
+void circle_test() {
+
+}
+
+
+
+
+
+int main_online(int argc, char *argv[]) {
+	// construct empty datastructure
+	std::vector<int> xs;
+	std::vector<int> ys;
+
+	for (int i = 0; i < 455; i += 30)
+	{
+		utils::draw_circle(500, 500, i, xs, ys);
+	}
+	// utils::draw_circle(50, 50, 40, xs, ys);
+	// utils::draw_circle(50, 50, 35, xs, ys);
+	// utils::draw_circle(50, 50, 30, xs, ys);
+	// utils::draw_circle(50, 50, 25, xs, ys);
+
+	OnlineCDDTCast<> ocddt = OnlineCDDTCast<>(OMap(1000,1000), 108, MAX_DISTANCE);
+
+	// std::cout << "]" << std::endl;
+	// for (int i = 0; i < xs.size(); ++i)
+	// 	std::cout << "(" << xs[i] << ", " << ys[i] << "),";
+	// std::cout << "]" << std::endl;
+
+	auto start_time = std::chrono::high_resolution_clock::now();
+	for (int i = 0; i < xs.size(); ++i)
+	{
+		ocddt.add_obstacle(xs[i], ys[i]);
+	}
+	auto end_time = std::chrono::high_resolution_clock::now();
+	double duration = utils::ts(end_time - start_time);
+	std::cout << "Added " << xs.size() << " obstacles after: " << duration << "  avg time/obstacle: " << duration / xs.size() << std::endl;
+
+	float *samples = new float[RANDOM_SAMPLES*3];
+	float *outs = new float[RANDOM_SAMPLES];
+	Benchmark<RayMarching>::get_random_samples(samples, RANDOM_SAMPLES, 1000, 1000);
+
+	start_time = std::chrono::high_resolution_clock::now();
+	for (int i = 0; i < RANDOM_SAMPLES; ++i)
+	{
+		outs[i] = ocddt.calc_range(samples[i*3], samples[i*3+1], samples[i*3+2]);
+	}
+	end_time = std::chrono::high_resolution_clock::now();
+	duration = utils::ts(end_time - start_time);
+	std::cout << "Performed " << RANDOM_SAMPLES << " samples in: " << duration << "  avg time/query: " << duration / RANDOM_SAMPLES << std::endl;
+
+	// std::vector<int> q_xs;
+	// std::vector<int> q_ys;
+	// std::vector<double> q_ts;
+
+	// int num_samples = 10;
+
+	// utils::radial_queries(50, 50, num_samples, q_xs, q_ys, q_ts);
+
+
+
+	// for (int i = 0; i < num_samples; ++i)
+	// {
+	// 	float rng = ocddt.calc_range(q_xs[i], q_ys[i], q_ts[i]);
+	// 	std::cout << "Query: <"<<q_xs[i]<<","<<q_ys[i]<<","<<q_ts[i]<<">" << std::endl;
+	// 	std::cout << "... range: " << rng << std::endl;
+	// }
+
+
+	start_time = std::chrono::high_resolution_clock::now();
+	for (int i = 0; i < xs.size(); ++i)
+	{
+		ocddt.remove_obstacle(xs[i], ys[i]);
+	}
+	end_time = std::chrono::high_resolution_clock::now();
+	duration = utils::ts(end_time - start_time);
+	std::cout << "Removed " << xs.size() << " obstacles after: " << duration << "  avg time/obstacle: " << duration / xs.size() << std::endl;
+
+	// for (int i = 0; i < num_samples; ++i)
+	// {
+	// 	float rng = ocddt.calc_range(q_xs[i], q_ys[i], q_ts[i]);
+	// 	std::cout << "Query: <"<<q_xs[i]<<","<<q_ys[i]<<","<<q_ts[i]<<">" << std::endl;
+	// 	std::cout << "... range: " << rng << std::endl;
+	// }
+	
+
+
+
+	// for (int i = 0; i < xs.size(); ++i)
+	// {
+	// 	// std::cout << "Pixel: " << xs[i] << " " << ys[i] << std::endl;
+	// 	std::cout << "(" << xs[i] << ", " << ys[i] << ")," << std::endl;
+	// }
+}
+
+
+// offline version
+int main_offline(int argc, char *argv[]) {
+	// construct empty datastructure
+	std::vector<int> xs;
+	std::vector<int> ys;
+
+	for (int i = 0; i < 455; i += 30)
+	{
+		utils::draw_circle(500, 500, i, xs, ys);
+	}
+
+	// utils::draw_circle(50, 50, 40, xs, ys);
+	// utils::draw_circle(50, 50, 35, xs, ys);
+	// utils::draw_circle(50, 50, 30, xs, ys);
+	// utils::draw_circle(50, 50, 25, xs, ys);
+
+	OMap map = OMap(1000,1000);
+	for (int i = 0; i < xs.size(); ++i)
+	{
+		map.grid[xs[i]][ys[i]] = 1;
+	}
+
+	auto start_time = std::chrono::high_resolution_clock::now();
+	CDDTCast ocddt = CDDTCast(map, 108, MAX_DISTANCE);
+	auto end_time = std::chrono::high_resolution_clock::now();
+	double duration = utils::ts(end_time - start_time);
+
+	std::cout << "Added " << xs.size() << " obstacles after: " << duration << "  avg time/obstacle: " << duration / xs.size() << std::endl;
+
+	float *samples = new float[RANDOM_SAMPLES*3];
+	float *outs = new float[RANDOM_SAMPLES];
+	Benchmark<RayMarching>::get_random_samples(samples, RANDOM_SAMPLES, 1000, 1000);
+
+	start_time = std::chrono::high_resolution_clock::now();
+	for (int i = 0; i < RANDOM_SAMPLES; ++i)
+	{
+		outs[i] = ocddt.calc_range(samples[i*3], samples[i*3+1], samples[i*3+2]);
+	}
+	end_time = std::chrono::high_resolution_clock::now();
+	duration = utils::ts(end_time - start_time);
+	std::cout << "Performed " << RANDOM_SAMPLES << " samples in: " << duration << "  avg time/query: " << duration / RANDOM_SAMPLES << std::endl;
+
+
+
+	// std::vector<int> q_xs;
+	// std::vector<int> q_ys;
+	// std::vector<double> q_ts;
+
+	// int num_samples = 10;
+
+	// utils::radial_queries(50, 50, num_samples, q_xs, q_ys, q_ts);
+
+	// for (int i = 0; i < num_samples; ++i)
+	// {
+	// 	float rng = ocddt.calc_range(q_xs[i], q_ys[i], q_ts[i]);
+	// 	std::cout << "Query: <"<<q_xs[i]<<","<<q_ys[i]<<","<<q_ts[i]<<">" << std::endl;
+	// 	std::cout << "... range: " << rng << std::endl;
+	// }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

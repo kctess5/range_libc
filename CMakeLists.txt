@@ -173,6 +173,7 @@ endif()
 
 
 include_directories(${BASEPATH}/vendor/cereal-1.2.2/include)
+include_directories(${BASEPATH}/vendor/btree)
 
 # set(CMAKE_CXX_FLAGS "-march=native -fverbose-asm -ffast-math -fno-math-errno -g -save-temps ${CMAKE_CXX_FLAGS}")
 # set(CMAKE_CXX_FLAGS "-march=native -ffast-math -fno-math-errno -g -rdynamic -save-temps ${CMAKE_CXX_FLAGS}")
@@ -187,9 +188,12 @@ if (WITH_CUDA)
 
 	detect_installed_gpus(CUDA_COMPUTE_NUMBER)
 	string(REGEX REPLACE "\\." "" CUDA_COMPUTE_NUMBER "${CUDA_COMPUTE_NUMBER}")
-	message("Detected compute capability: "${CUDA_COMPUTE_NUMBER})
+	# message("Detected compute capability: "${CUDA_COMPUTE_NUMBER})
+  message("Detected compute capability: ")
+  # message(${CUDA_COMPUTE_NUMBER})
 
-	set(CUDA_NVCC_FLAGS ${CUDA_NVCC_FLAGS};--use_fast_math -O3 -arch=compute_${CUDA_COMPUTE_NUMBER} -code=sm_${CUDA_COMPUTE_NUMBER})
+	# set(CUDA_NVCC_FLAGS ${CUDA_NVCC_FLAGS};--use_fast_math -O3 -arch=compute_${CUDA_COMPUTE_NUMBER} -code=sm_${CUDA_COMPUTE_NUMBER})
+  set(CUDA_NVCC_FLAGS ${CUDA_NVCC_FLAGS};--use_fast_math -O3)
 
 
 	add_definitions(-DUSE_CUDA=1)

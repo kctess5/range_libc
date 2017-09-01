@@ -9,6 +9,15 @@
 #include <climits>
 #include <random>
 #include <tuple>
+#include <cstdlib>
+#include <iterator>
+#include <memory>
+#include <limits>
+#include <set>
+#include <chrono>
+#include "btree_set.h"
+
+#define M_2PI 6.28318530718
 
 namespace utils {
 	static unsigned long x=123456789, y=362436069, z=521288629;
@@ -90,6 +99,7 @@ namespace utils {
 		RMGPU,
 		CDDT,
 		PCDDT,
+		OCDDT,
 		CDDT2,
 		PCDDT2,
 		CDDTGPU,
@@ -105,10 +115,11 @@ namespace utils {
 		if (method == "CDDTCast"       || method == "cddt") return CDDT;
 		if (method == "PrunedCDDTCast" || method == "pcddt") return PCDDT;
 		if (method == "CDDTCast2"      || method == "cddt2") return CDDT2;
-		if (method == "PrunedCDDTCast2" || method == "pcddt2") return PCDDT2;
+		if (method == "PrunedCDDTCast2"|| method == "pcddt2") return PCDDT2;
 		if (method == "CDDTCastGPU"    || method == "cddtgpu") return CDDTGPU;
 		if (method == "PCDDTCastGPU"   || method == "pcddtgpu") return PCDDTGPU;
 		if (method == "GiantLUTCast"   || method == "glt") return GLT;
+		if (method == "OnlineCDDTCast" || method == "ocddt") return OCDDT;
 		return UNKNOWN;
 	}
 
@@ -124,6 +135,7 @@ namespace utils {
 			case PCDDT2 : return "pcddt2";
 			case CDDTGPU : return "cddtgpu";
 			case PCDDTGPU : return "pcddtgpu";
+			case OCDDT : return "ocddt";
 			case GLT : return "glt";
 			default : return "unknown";
 		}
@@ -284,6 +296,238 @@ namespace utils {
 		std::stringstream ss;
 		serialize(vals,&ss);
 		return ss.str();
+	}
+
+	void add_pixel(int x, int y, std::vector<int> &xs, std::vector<int> &ys) {
+		xs.push_back(x); ys.push_back(y);
+	}
+
+	void draw_circle(int x0, int y0, int radius, std::vector<int> &xs, std::vector<int> &ys)
+	{
+	    int x = radius;
+	    int y = 0;
+	    int err = 0;
+	 
+	    while (x >= y)
+	    {
+	    add_pixel(x0 + x, y0 + y, xs, ys);
+	    add_pixel(x0 + y, y0 + x, xs, ys);
+	    add_pixel(x0 - y, y0 + x, xs, ys);
+	    add_pixel(x0 - x, y0 + y, xs, ys);
+	    add_pixel(x0 - x, y0 - y, xs, ys);
+	    add_pixel(x0 - y, y0 - x, xs, ys);
+	    add_pixel(x0 + y, y0 - x, xs, ys);
+	    add_pixel(x0 + x, y0 - y, xs, ys);
+	 
+	    if (err <= 0)
+	    {
+	        y += 1;
+	        err += 2*y + 1;
+	    }
+	 
+	    if (err > 0)
+	    {
+	        x -= 1;
+	        err -= 2*x + 1;
+	    }
+	    }
+	}
+
+	void radial_queries(int x0, int y0, int num_queries, std::vector<int> &xs, std::vector<int> &ys, std::vector<double> &ts) {
+		double step = M_2PI / num_queries;
+		double angle = 0;
+		for (int i = 0; i < num_queries; ++i)
+		{
+			xs.push_back(x0);
+			ys.push_back(y0);
+			ts.push_back(angle);
+			angle += step;
+		}
+	}
+
+	template <int NodeSize = 128, class int_t = int, int precision = 16>
+	class BTreeStructure
+	{
+		typedef btree::btree_set<int_t, std::less<int_t>, std::allocator<int_t>, NodeSize> tree_t;
+	public:
+		// float values are given, but internally these are converted to integers for
+		// precision.
+		BTreeStructure() {};
+		~BTreeStructure() {};
+		void insert(float key) {
+			int value = key * precision;
+			map.insert(value);
+		};
+		void remove(float key) {
+			int value = key * precision;
+			map.erase(value);
+		};
+		float next(float key) {
+			int value = key * precision;
+			typename tree_t::iterator it = map.lower_bound(value);
+			if (it != map.end()) {
+				return float(*it) / precision;
+			} else {
+				return -1.0;
+			}
+		};
+		float prev(float key) {
+			int value = key * precision;
+			typename tree_t::iterator it = map.lower_bound(value);
+			if (it != map.begin()) {
+				it--;
+				return float(*it) / precision;
+			} else {
+				return -1.0;
+			}
+		};
+
+		size_t size() {
+			return map.size();
+		}
+	private:
+	    tree_t map;
+	};
+
+
+	template <int NodeSize = 128>
+	class FloatBTreeStructure
+	{
+		typedef btree::btree_set<float, std::less<float>, std::allocator<float>, NodeSize> tree_t;
+	public:
+		// float values are given, but internally these are converted to integers for
+		// precision.
+		FloatBTreeStructure() {};
+		~FloatBTreeStructure() {};
+		void insert(float key) {
+			map.insert(key);
+		};
+		void remove(float key) {
+			map.erase(key);
+		};
+		float next(float key) {
+			typename tree_t::iterator it = map.lower_bound(key);
+			if (it != map.end()) {
+				return *it;
+			} else {
+				return -1.0;
+			}
+		};
+		float prev(float key) {
+			typename tree_t::iterator it = map.lower_bound(key);
+			if (it != map.begin()) {
+				it--;
+				return *it;
+			} else {
+				return -1.0;
+			}
+		};
+	private:
+	    tree_t map;
+	};
+
+	template <class int_t = int, int precision = 16>
+	class SortedVector
+	{
+	public:
+		SortedVector() {};
+		~SortedVector() {};
+
+		void insert(float key) {
+			int value = key * precision;
+			int index = std::upper_bound(vec.begin(), vec.end(), value) - vec.begin();
+
+			vec.insert(vec.begin() + index, value);
+
+			// if (index == 0) {
+			// 	vec.insert(vec.begin(), value);
+			// } else if (index == vec.size()) {
+			// 	vec.push_back(value);
+			// } else {
+			// 	vec.insert(vec.begin() + index, value);
+			// }
+		};
+		void remove(float key) {
+			int value = key * precision;
+			auto pr = std::equal_range(std::begin(vec), std::end(vec), value);
+	    	vec.erase(pr.first, pr.second);
+		};
+		float next(float key) {
+			int value = key * precision;
+			int index = std::upper_bound(vec.begin(), vec.end(), value) - vec.begin();
+			if (index < vec.size()) {
+				return float(vec[index]) / precision;
+			} else {
+				return -1.0;
+			}
+		};
+		float prev(float key) {
+			int value = key * precision;
+			int index = std::upper_bound(vec.begin(), vec.end(), value) - vec.begin();
+			if (index > 0) {
+				return float(vec[index-1]) / precision;
+			} else {
+				return -1.0;
+			}
+		};
+	// private:
+		std::vector<int_t> vec;
+	};
+
+	class SetStructure
+	{
+	public:
+		// float values are given, but internally these are converted to integers for
+		// precision.
+		SetStructure() {
+
+		};
+		~SetStructure() {};
+		void insert(float key) {
+			int value = key * precision;
+			map.insert(value);
+		};
+		void remove(float key) {
+			int value = key * precision;
+			map.erase(value);
+		};
+		float next(float key) {
+			int value = key * precision;
+			std::set<int>::iterator it = map.lower_bound(value);
+			if (it != map.end()) {
+				return float(*it) / precision;
+			} else {
+				// std::cout << "No larger element found!" << std::endl;
+				return -1.0;
+			}
+		};
+		float prev(float key) {
+			int value = key * precision;
+			std::set<int>::iterator it = map.lower_bound(value);
+			if (it != map.begin()) {
+				it--;
+				return float(*it) / precision;
+			} else {
+				// std::cout << "No smaller element found!" << std::endl;
+				return -1.0;
+			}
+		};
+	private:
+	    std::set<int> map;
+	    int size = 0;
+	    int precision = 16;
+	};
+
+	double ts(std::chrono::duration<double> diff) {
+		return std::chrono::duration_cast<std::chrono::duration<double>>(diff).count();
+	}
+
+	template <class el_t>
+	el_t median(std::vector<el_t> v)
+	{
+	    size_t n = v.size() / 2;
+	    nth_element(v.begin(), v.begin()+n, v.end());
+	    return v[n];
 	}
 
 } // namespace utils
