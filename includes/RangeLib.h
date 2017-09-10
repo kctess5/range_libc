@@ -202,6 +202,7 @@ namespace ranges {
 
 		bool get(int x, int y) { return grid[x][y]; }
 		bool isOccupied(int x, int y) { 
+			if (x < 0 || x >= width || y < 0 || y >= height) return false;
 			#if _MAKE_TRACE_MAP == 1
 			trace_grid[x][y] = true;
 			#endif
