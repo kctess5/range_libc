@@ -214,6 +214,7 @@ namespace ranges {
 
 		bool get(int x, int y) { return grid[x][y]; }
 		bool isOccupied(int x, int y) { 
+			if (x < 0 || x >= width || y < 0 || y >= height) return false;
 			#if _MAKE_TRACE_MAP == 1
 			trace_grid[x][y] = true;
 			#endif
@@ -1915,59 +1916,6 @@ namespace ranges {
 			}
 		}
 
-		// void serialize(std::string fn) {
-		// 	std::ofstream myFile;
-		// 	myFile.open (fn, std::ios::out | std::ios::binary);
-		// 	cereal::BinaryOutputArchive archive( myFile );
-
-		// 	RangeMethod::serialize(archive);
-
-		// 	archive(theta_discretization);
-		// 	archive(lut_translations);
-		// 	archive(compressed_lut);
-
-		// 	myFile.close();
-		// }
-		// void deserialize(std::string fn) {
-		// 	std::ifstream myFile;
-		// 	myFile.open (fn, std::ios::in | std::ios::binary);
-		// 	cereal::BinaryInputArchive archive( myFile );
-		// 	RangeMethod::deserialize(archive);
-		// 	archive(theta_discretization);
-		// 	archive(lut_translations);
-		// 	archive(compressed_lut);
-
-		// 	#if _USE_CACHED_TRIG == 1
-		// 	cos_values.clear();
-		// 	sin_values.clear();
-		// 	for (i = 0; i < theta_discretization; ++i)
-		// 	{
-		// 		float angle = M_2PI * i / theta_discretization;
-		// 		cos_values.push_back(cosf(angle));
-		// 		sin_values.push_back(sinf(angle));
-		// 	}
-		// 	#endif
-
-		// 	#if _USE_CACHED_CONSTANTS
-		// 	theta_discretization_div_M_2PI = theta_discretization / M_2PI;
-		// 	M_2PI_div_theta_discretization = M_2PI / ((float) theta_discretization);
-		// 	#endif
-
-		// 	#if _TRACK_COLLISION_INDEXES == 1
-		// 	for (a = 0; a < theta_discretization; ++a) {
-		// 		std::vector<std::set<int> > projection_lut_tracker;
-		// 		for (i = 0; i < lut_widths[a]; ++i)
-		// 		{
-		// 			std::set<int> collection;
-		// 			projection_lut_tracker.push_back(collection);
-		// 		}
-		// 		collision_table.push_back(projection_lut_tracker);
-		// 	}
-		// 	std::vector<std::vector<std::set<int> > > collision_table;
-		// 	#endif
-		// 	myFile.close();
-		// }
-
 		// takes a continuous theta space and returns the nearest theta in the discrete LUT space
 		// as well as the bin index that the given theta falls into
 		std::tuple<int, float, bool>  discretize_theta(float theta) {
@@ -2261,6 +2209,7 @@ namespace ranges {
 		}
 
 		float ANIL calc_range(float x, float y, float heading) {
+			if (x < 0 || x >= map.width || y < 0 || y >= map.height) return max_range;
 			#if _GIANT_LUT_SHORT_DATATYPE
 				#if _USE_CACHED_CONSTANTS
 			return giant_lut[(int)x][(int)y][discretize_theta(heading)] * max_div_limits;
