@@ -1867,6 +1867,7 @@ namespace ranges {
 		}
 
 		float ANIL calc_range(float x, float y, float heading) {
+			if (x < 0 || x >= map.width || y < 0 || y >= map.height) return max_range;
 			#if _GIANT_LUT_SHORT_DATATYPE
 				#if _USE_CACHED_CONSTANTS
 			return giant_lut[(int)x][(int)y][discretize_theta(heading)] * max_div_limits;
