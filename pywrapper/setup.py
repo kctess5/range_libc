@@ -93,7 +93,12 @@ def locate_cuda():
 
 # compiler_flags = ["-w","-std=c++11", "-march=native", "-ffast-math", "-fno-math-errno"]
 compiler_flags = ["-w","-std=c++11", "-march=native", "-ffast-math", "-fno-math-errno", "-O3"]
-nvcc_flags = ['-arch=sm_20', '--ptxas-options=-v', '-c', '--compiler-options', "'-fPIC'", "-w","-std=c++11"]
+arch_flag = None
+if 'nvcc_arch' in os.environ:
+    arch_flag = '-arch='+os.environ['nvcc_arch']
+else:
+    arch_flag = '-arch=sm_20'
+nvcc_flags = [arch_flag, '--ptxas-options=-v', '-c', '--compiler-options', "'-fPIC'", "-w","-std=c++11"]
 include_dirs = ["../", numpy_include]
 depends = ["../includes/*.h"]
 sources = ["RangeLibc.pyx","../vendor/lodepng/lodepng.cpp"]
