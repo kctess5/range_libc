@@ -3,6 +3,7 @@ from distutils.extension import Extension
 from Cython.Distutils import build_ext
 import numpy, os, platform, sys
 from os.path import join as pjoin
+import six
 
 
 # Obtain the numpy include directory.  This logic works across numpy versions.
@@ -18,10 +19,10 @@ def check_for_flag(flag_str, truemsg=False, falsemsg=False):
 	    enabled = False
 
 	if enabled and not truemsg == False:
-		print truemsg
+		print(truemsg)
 	elif not enabled and not falsemsg == False:
-		print falsemsg
-		print "   $ sudo "+flag_str+"=ON python setup.py install"
+		print(falsemsg)
+		print("   $ sudo "+flag_str+"=ON python setup.py install")
 	return enabled
 
 use_cuda = check_for_flag("WITH_CUDA", \
@@ -31,9 +32,9 @@ trace    = check_for_flag("TRACE", \
 	"Compiling with trace enabled for Bresenham's Line", \
 	"Compiling without trace enabled for Bresenham's Line")
 
-print 
-print "--------------"
-print 
+print() 
+print("--------------")
+print()
 
 # support for compiling in clang
 if platform.system().lower() == "darwin":
@@ -62,10 +63,10 @@ def locate_cuda():
     # print os.environ
     # first check if the CUDAHOME env variable is in use
     if os.path.isdir("/usr/local/cuda-7.5"):
-    	home = "/usr/local/cuda-7.5"
+        home = "/usr/local/cuda-7.5"
         nvcc = pjoin(home, 'bin', 'nvcc')
     elif os.path.isdir("/usr/local/cuda"):
-    	home = "/usr/local/cuda"
+        home = "/usr/local/cuda"
         nvcc = pjoin(home, 'bin', 'nvcc')
     elif 'CUDAHOME' in os.environ:
         home = os.environ['CUDAHOME']
@@ -81,7 +82,8 @@ def locate_cuda():
     cudaconfig = {'home':home, 'nvcc':nvcc,
                   'include': pjoin(home, 'include'),
                   'lib64': pjoin(home, 'lib64')}
-    for k, v in cudaconfig.iteritems():
+
+    for k, v in six.iteritems(cudaconfig):
         if not os.path.exists(v):
             raise EnvironmentError('The CUDA %s path could not be located in %s' % (k, v))
 
@@ -93,7 +95,7 @@ def locate_cuda():
 
 # compiler_flags = ["-w","-std=c++11", "-march=native", "-ffast-math", "-fno-math-errno"]
 compiler_flags = ["-w","-std=c++11", "-march=native", "-ffast-math", "-fno-math-errno", "-O3"]
-nvcc_flags = ['-arch=sm_20', '--ptxas-options=-v', '-c', '--compiler-options', "'-fPIC'", "-w","-std=c++11"]
+nvcc_flags = ['-arch=sm_61', '--ptxas-options=-v', '-c', '--compiler-options', "'-fPIC'", "-w","-std=c++11"]
 include_dirs = ["../", numpy_include]
 depends = ["../includes/*.h"]
 sources = ["RangeLibc.pyx","../vendor/lodepng/lodepng.cpp"]
